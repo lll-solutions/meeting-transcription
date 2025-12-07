@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Transcription</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a24;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --success: #22c55e;
+            --border: #2a2a3a;
+        }
+
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            background-image: 
+                radial-gradient(ellipse at top, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(139, 92, 246, 0.05) 0%, transparent 50%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .logo-text {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff, #a0a0b0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        /* Sign In View */
+        #signin-view {
+            text-align: center;
+        }
+
+        .google-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            width: 100%;
+            padding: 0.875rem 1.5rem;
+            background: #fff;
+            color: #333;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .google-btn:hover {
+            background: #f5f5f5;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .google-btn:active {
+            transform: translateY(0);
+        }
+
+        .google-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* Dashboard View */
+        #dashboard-view {
+            display: none;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+        }
+
+        .user-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.25rem;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .user-details {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: 600;
+            margin-bottom: 0.125rem;
+        }
+
+        .user-email {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.75rem;
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: currentColor;
+            border-radius: 50%;
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.875rem 1.5rem;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .btn-danger {
+            background: transparent;
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Meetings List */
+        .meetings-section {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .section-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1rem;
+        }
+
+        .meeting-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .meeting-info {
+            flex: 1;
+        }
+
+        .meeting-title {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .meeting-meta {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .meeting-status {
+            padding: 0.25rem 0.625rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .meeting-status.completed {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+        }
+
+        .meeting-status.processing {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--accent);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+            opacity: 0.5;
+        }
+
+        /* Loading State */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast.error {
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .toast.success {
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="logo">
+                <div class="logo-icon">📝</div>
+                <div class="logo-text">Meeting Transcription</div>
+            </div>
+
+            <!-- Sign In View -->
+            <div id="signin-view">
+                <h1>Welcome</h1>
+                <p class="subtitle">
+                    Transform your meetings into actionable insights with AI-powered transcription and study guides.
+                </p>
+
+                <button class="google-btn" onclick="signInWithGoogle()">
+                    <svg viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    Sign in with Google
+                </button>
+
+                <div class="divider">Secure authentication via Firebase</div>
+            </div>
+
+            <!-- Loading View -->
+            <div id="loading-view" class="loading">
+                <div class="spinner"></div>
+                <p>Signing you in...</p>
+            </div>
+
+            <!-- Dashboard View -->
+            <div id="dashboard-view">
+                <div class="user-info">
+                    <div class="user-avatar" id="user-avatar">?</div>
+                    <div class="user-details">
+                        <div class="user-name" id="user-name">User</div>
+                        <div class="user-email" id="user-email">user@example.com</div>
+                    </div>
+                    <div class="status-badge">Connected</div>
+                </div>
+
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="createMeeting()">
+                        ➕ New Meeting Bot
+                    </button>
+                    <button class="btn btn-secondary" onclick="loadMeetings()">
+                        🔄 Refresh Meetings
+                    </button>
+                </div>
+
+                <div class="meetings-section">
+                    <div class="section-title">Recent Meetings</div>
+                    <div id="meetings-list">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <p>No meetings yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actions" style="margin-top: 1.5rem;">
+                    <button class="btn btn-danger" onclick="signOut()">
+                        Sign Out
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Powered by <a href="https://recall.ai" target="_blank">Recall.ai</a> & Firebase</p>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
+    <script>
+        // Firebase config will be injected by the server or loaded from environment
+        // For now, we'll fetch it from our API
+        let firebaseConfig = null;
+        let auth = null;
+        let currentUser = null;
+        let idToken = null;
+
+        // Initialize Firebase
+        async function initFirebase() {
+            try {
+                // Try to get config from server
+                const response = await fetch('/api/config');
+                if (response.ok) {
+                    firebaseConfig = await response.json();
+                }
+                
+                // Check if we have valid config
+                if (!firebaseConfig || !firebaseConfig.projectId) {
+                    console.error('Firebase config missing projectId');
+                    showConfigError();
+                    return;
+                }
+
+                // If apiKey is missing, show setup wizard instead of trying to init Firebase
+                if (!firebaseConfig.apiKey) {
+                    console.log('Firebase apiKey not configured - showing setup wizard');
+                    showConfigError();
+                    return;
+                }
+
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+
+                // Listen for auth state changes
+                auth.onAuthStateChanged(async (user) => {
+                    if (user) {
+                        currentUser = user;
+                        idToken = await user.getIdToken();
+                        showDashboard(user);
+                        loadMeetings();
+                    } else {
+                        currentUser = null;
+                        idToken = null;
+                        showSignIn();
+                    }
+                });
+            } catch (error) {
+                console.error('Firebase init error:', error);
+                showConfigError();
+            }
+        }
+        
+        function showConfigError() {
+            document.getElementById('signin-view').innerHTML = `
+                <h1>Configuration Required</h1>
+                <p class="subtitle">
+                    Authentication is not configured yet. Please contact your administrator.
+                </p>
+                <div style="margin-top: 1.5rem; padding: 1rem; background: var(--bg-secondary); border-radius: 8px; text-align: left;">
+                    <p style="color: var(--text-secondary); font-size: 0.875rem;">
+                        <strong>Admin:</strong> Re-run the setup script to configure authentication:
+                    </p>
+                    <code style="display: block; margin-top: 0.5rem; padding: 0.5rem; background: var(--bg-primary); border-radius: 4px; font-size: 0.8rem;">
+                        ./setup.sh
+                    </code>
+                </div>
+            `;
+        }
+
+        // Sign in with Google
+        async function signInWithGoogle() {
+            showLoading();
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                await auth.signInWithPopup(provider);
+            } catch (error) {
+                console.error('Sign in error:', error);
+                showToast('Sign in failed: ' + error.message, 'error');
+                showSignIn();
+            }
+        }
+
+        // Sign out
+        async function signOut() {
+            try {
+                await auth.signOut();
+                showToast('Signed out successfully', 'success');
+            } catch (error) {
+                console.error('Sign out error:', error);
+                showToast('Sign out failed', 'error');
+            }
+        }
+
+        // API call helper
+        async function apiCall(endpoint, options = {}) {
+            if (!idToken) {
+                throw new Error('Not authenticated');
+            }
+
+            const response = await fetch(endpoint, {
+                ...options,
+                headers: {
+                    'Authorization': `Bearer ${idToken}`,
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                }
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ error: 'Request failed' }));
+                throw new Error(error.error || error.message || 'Request failed');
+            }
+
+            return response.json();
+        }
+
+        // Load meetings
+        async function loadMeetings() {
+            try {
+                const meetings = await apiCall('/api/meetings');
+                renderMeetings(meetings);
+            } catch (error) {
+                console.error('Load meetings error:', error);
+                if (error.message.includes('Authentication')) {
+                    // Token might be expired, refresh it
+                    idToken = await currentUser.getIdToken(true);
+                    loadMeetings();
+                }
+            }
+        }
+
+        // Render meetings list
+        function renderMeetings(meetings) {
+            const container = document.getElementById('meetings-list');
+
+            if (!meetings || meetings.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <p>No meetings yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = meetings.map(meeting => `
+                <div class="meeting-item">
+                    <div class="meeting-info">
+                        <div class="meeting-title">${meeting.bot_name || 'Meeting'}</div>
+                        <div class="meeting-meta">${formatDate(meeting.created_at)}</div>
+                    </div>
+                    <span class="meeting-status ${meeting.status}">${meeting.status}</span>
+                </div>
+            `).join('');
+        }
+
+        // Create new meeting
+        async function createMeeting() {
+            const meetingUrl = prompt('Enter the meeting URL (Zoom, Google Meet, etc.):');
+            if (!meetingUrl) return;
+
+            try {
+                showToast('Creating meeting bot...', 'success');
+                const meeting = await apiCall('/api/meetings', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        meeting_url: meetingUrl,
+                        bot_name: 'Meeting Assistant'
+                    })
+                });
+                showToast('Meeting bot created!', 'success');
+                loadMeetings();
+            } catch (error) {
+                console.error('Create meeting error:', error);
+                showToast('Failed to create meeting: ' + error.message, 'error');
+            }
+        }
+
+        // UI Helpers
+        function showSignIn() {
+            document.getElementById('signin-view').style.display = 'block';
+            document.getElementById('loading-view').style.display = 'none';
+            document.getElementById('dashboard-view').style.display = 'none';
+        }
+
+        function showLoading() {
+            document.getElementById('signin-view').style.display = 'none';
+            document.getElementById('loading-view').style.display = 'block';
+            document.getElementById('dashboard-view').style.display = 'none';
+        }
+
+        function showDashboard(user) {
+            document.getElementById('signin-view').style.display = 'none';
+            document.getElementById('loading-view').style.display = 'none';
+            document.getElementById('dashboard-view').style.display = 'block';
+
+            // Update user info
+            document.getElementById('user-name').textContent = user.displayName || 'User';
+            document.getElementById('user-email').textContent = user.email;
+
+            const avatarEl = document.getElementById('user-avatar');
+            if (user.photoURL) {
+                avatarEl.innerHTML = `<img src="${user.photoURL}" alt="Avatar">`;
+            } else {
+                avatarEl.textContent = (user.displayName || user.email || '?')[0].toUpperCase();
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initFirebase);
+    </script>
+</body>
+</html>
+

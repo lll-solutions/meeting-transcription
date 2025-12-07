@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Meeting Transcription{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Plus Jakarta Sans - distinctive, modern font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        midnight: {
+                            50: '#f0f4ff',
+                            100: '#e0e8ff',
+                            200: '#c7d4fe',
+                            300: '#a4b8fc',
+                            400: '#8093f8',
+                            500: '#626ef1',
+                            600: '#4c4de5',
+                            700: '#403dca',
+                            800: '#3534a3',
+                            900: '#1a1a2e',
+                            950: '#0f0f1a',
+                        },
+                        accent: {
+                            coral: '#ff6b6b',
+                            teal: '#4ecdc4',
+                            gold: '#ffd93d',
+                            violet: '#a855f7',
+                        }
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                        'slide-up': 'slideUp 0.4s ease-out',
+                        'pulse-soft': 'pulseSoft 2s infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        pulseSoft: {
+                            '0%, 100%': { opacity: '1' },
+                            '50%': { opacity: '0.7' },
+                        },
+                    },
+                },
+            },
+        }
+    </script>
+    
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1a1a2e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3534a3;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4c4de5;
+        }
+        
+        /* Gradient text */
+        .gradient-text {
+            background: linear-gradient(135deg, #4ecdc4 0%, #a855f7 50%, #ff6b6b 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* Glass card effect */
+        .glass-card {
+            background: rgba(26, 26, 46, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(98, 110, 241, 0.2);
+        }
+        
+        /* Animated gradient border */
+        .gradient-border {
+            position: relative;
+        }
+        .gradient-border::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, #4ecdc4, #a855f7, #ff6b6b);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+        }
+        
+        /* HTMX loading indicator */
+        .htmx-request .htmx-indicator {
+            display: inline-block;
+        }
+        .htmx-indicator {
+            display: none;
+        }
+    </style>
+</head>
+<body class="h-full bg-midnight-950 text-gray-100 font-sans antialiased">
+    <!-- Background pattern -->
+    <div class="fixed inset-0 -z-10 overflow-hidden">
+        <div class="absolute top-0 left-1/4 w-96 h-96 bg-accent-violet/10 rounded-full blur-3xl"></div>
+        <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-accent-teal/10 rounded-full blur-3xl"></div>
+        <div class="absolute top-1/2 left-1/2 w-64 h-64 bg-accent-coral/5 rounded-full blur-3xl"></div>
+        <!-- Grid pattern -->
+        <div class="absolute inset-0 bg-[linear-gradient(rgba(98,110,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(98,110,241,0.03)_1px,transparent_1px)] bg-[size:64px_64px]"></div>
+    </div>
+    
+    <!-- Navigation -->
+    <nav class="border-b border-midnight-800/50 backdrop-blur-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-teal to-accent-violet flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                        </svg>
+                    </div>
+                    <a href="/" class="text-xl font-bold gradient-text">MeetingBot</a>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <a href="/api/meetings" class="text-sm text-gray-400 hover:text-white transition-colors font-mono">
+                        /api
+                    </a>
+                    <div class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-midnight-900/50 border border-midnight-700">
+                        <span class="w-2 h-2 rounded-full bg-accent-teal animate-pulse-soft"></span>
+                        <span class="text-sm text-gray-300">{{ user or 'anonymous' }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Toast notifications container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
+    
+    <script>
+        // HTMX event handlers
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            // Animate new elements
+            evt.detail.elt.querySelectorAll('.animate-on-load').forEach(el => {
+                el.classList.add('animate-slide-up');
+            });
+        });
+        
+        // Toast notification helper
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const colors = {
+                success: 'bg-accent-teal/20 border-accent-teal text-accent-teal',
+                error: 'bg-accent-coral/20 border-accent-coral text-accent-coral',
+                info: 'bg-midnight-600/50 border-midnight-500 text-gray-200'
+            };
+            const toast = document.createElement('div');
+            toast.className = `px-4 py-3 rounded-lg border ${colors[type]} animate-slide-up`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                toast.style.transition = 'all 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+    </script>
+</body>
+</html>
+

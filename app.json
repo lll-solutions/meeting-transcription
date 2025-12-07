@@ -1,0 +1,21 @@
+{
+  "name": "meeting-transcription",
+  "env": {
+    "RECALL_API_KEY": {
+      "description": "Your Recall.ai API key. Sign up at https://recall.ai → Dashboard → API Key",
+      "required": true
+    },
+    "LLM_PROVIDER": {
+      "description": "LLM provider (vertex_ai recommended)",
+      "value": "vertex_ai"
+    },
+    "GCP_REGION": {
+      "description": "Region for Vertex AI",
+      "value": "us-central1"
+    },
+    "RETENTION_DAYS": {
+      "description": "Days to keep meetings/files (0 = forever)",
+      "value": "30"
+    }
+  }
+}
