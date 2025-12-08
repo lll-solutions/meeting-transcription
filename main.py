@@ -112,6 +112,26 @@ storage = MeetingStorage(bucket_name=OUTPUT_BUCKET, local_dir=OUTPUT_DIR)
 def set_current_user():
     """Set current user in request context using the auth module."""
     g.user = get_current_user()
+    # Also set user_info if available (for routes that don't use @require_auth)
+    if not hasattr(g, 'user_info'):
+        from src.api.auth import authenticate_request
+        user, _ = authenticate_request()
+        g.user_info = user if user else None
+
+
+def get_default_bot_name() -> str:
+    """
+    Get the default bot name based on the current user's name.
+    
+    Returns:
+        str: Bot name using user's name, or fallback to default
+    """
+    # Check if we have user info with a name
+    if hasattr(g, 'user_info') and g.user_info and g.user_info.name:
+        return f"{g.user_info.name}'s Bot"
+    
+    # Fallback to default
+    return "Meeting Assistant Bot"
 
 
 @app.route('/', methods=['GET'])
@@ -179,7 +199,7 @@ def ui_meetings_list():
 def ui_create_meeting():
     """HTMX: Create a meeting and return updated list."""
     meeting_url = request.form.get('meeting_url')
-    bot_name = request.form.get('bot_name', 'LLL Solutions (Kurt) Bot')
+    bot_name = request.form.get('bot_name') or get_default_bot_name()
     
     # Validate meeting URL
     is_valid, error = validate_meeting_url(meeting_url)
@@ -269,7 +289,7 @@ def create_meeting():
         return jsonify({"error": "meeting_url is required"}), 400
     
     meeting_url = data['meeting_url']
-    bot_name = data.get('bot_name', 'LLL Solutions (Kurt) Bot')
+    bot_name = data.get('bot_name') or get_default_bot_name()
     
     # Validate meeting URL
     is_valid, error = validate_meeting_url(meeting_url)
