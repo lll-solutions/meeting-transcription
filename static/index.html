@@ -401,6 +401,229 @@
         .toast.success {
             border-color: rgba(34, 197, 94, 0.3);
         }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 1rem;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .modal-description {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: flex-end;
+            padding: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Upload Zone */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 2.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-zone:hover {
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-zone.dragover {
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .upload-text {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .upload-hint {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* File Preview */
+        .file-preview {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .file-icon {
+            font-size: 1.5rem;
+        }
+
+        .file-name {
+            flex: 1;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-remove {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+
+        .file-remove:hover {
+            color: #ef4444;
+        }
+
+        .file-stats {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* Form Group */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .form-group input[type="text"] {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9375rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .form-group input[type="text"]::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+
+        /* Progress Steps */
+        .progress-steps {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-top: 1.5rem;
+        }
+
+        .progress-step {
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            transition: all 0.3s ease;
+        }
+
+        .progress-step.active {
+            background: rgba(99, 102, 241, 0.2);
+            color: var(--accent);
+        }
+
+        .progress-step.complete {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--success);
+        }
     </style>
 </head>
 <body>
@@ -452,17 +675,30 @@
                     <button class="btn btn-primary" onclick="createMeeting()">
                         ➕ New Meeting Bot
                     </button>
+                    <button class="btn btn-secondary" onclick="showUploadModal()">
+                        📤 Upload Transcript
+                    </button>
                     <button class="btn btn-secondary" onclick="loadMeetings()">
                         🔄 Refresh Meetings
                     </button>
                 </div>
 
                 <div class="meetings-section">
-                    <div class="section-title">Recent Meetings</div>
+                    <div class="section-title">📤 Uploads</div>
+                    <div id="uploads-list">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📄</div>
+                            <p>No uploads yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="meetings-section" style="margin-top: 1rem; padding-top: 1rem;">
+                    <div class="section-title">🤖 Bot Meetings</div>
                     <div id="meetings-list">
                         <div class="empty-state">
                             <div class="empty-state-icon">📋</div>
-                            <p>No meetings yet</p>
+                            <p>No bot meetings yet</p>
                         </div>
                     </div>
                 </div>
@@ -476,11 +712,73 @@
         </div>
 
         <div class="footer">
-            <p>Powered by <a href="https://recall.ai" target="_blank">Recall.ai</a> & Firebase</p>
+            <p><a href="https://github.com/lll-solutions/meeting-transcription" target="_blank">Meeting Transcription Bot</a> by <a href="https://lll-solutions.com" target="_blank">LLL Solutions</a></p>
         </div>
     </div>
 
     <div class="toast" id="toast"></div>
+
+    <!-- Upload Modal -->
+    <div class="modal-overlay" id="upload-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Upload Transcript</h2>
+                <button class="modal-close" onclick="hideUploadModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">
+                    Upload a transcript JSON file to process through the LLM pipeline. 
+                    The system will generate summaries and a study guide.
+                </p>
+                
+                <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+                    <input type="file" id="file-input" accept=".json" style="display: none" onchange="handleFileSelect(event)">
+                    <div class="upload-icon">📁</div>
+                    <p class="upload-text">Click or drag a JSON file here</p>
+                    <p class="upload-hint">Supports Recall.ai transcript format</p>
+                </div>
+                
+                <div id="file-preview" class="file-preview" style="display: none;">
+                    <div class="file-info">
+                        <span class="file-icon">📄</span>
+                        <span class="file-name" id="file-name"></span>
+                        <button class="file-remove" onclick="clearFile()">&times;</button>
+                    </div>
+                    <div class="file-stats" id="file-stats"></div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="meeting-title">Meeting Title (optional)</label>
+                    <input type="text" id="meeting-title" placeholder="e.g., Team Standup - Dec 8">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideUploadModal()">Cancel</button>
+                <button class="btn btn-primary" id="process-btn" onclick="processUpload()" disabled>
+                    🚀 Process Transcript
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Processing Modal -->
+    <div class="modal-overlay" id="processing-modal">
+        <div class="modal">
+            <div class="modal-body" style="text-align: center; padding: 3rem;">
+                <div class="spinner" style="margin: 0 auto 1.5rem;"></div>
+                <h2 style="margin-bottom: 0.5rem;">Processing Transcript</h2>
+                <p class="modal-description" id="processing-status">Uploading file...</p>
+                <div class="progress-steps" id="progress-steps">
+                    <div class="progress-step" data-step="upload">📤 Upload</div>
+                    <div class="progress-step" data-step="combine">📝 Combine Words</div>
+                    <div class="progress-step" data-step="chunk">📦 Create Chunks</div>
+                    <div class="progress-step" data-step="summarize">🤖 AI Summary</div>
+                    <div class="progress-step" data-step="guide">📚 Study Guide</div>
+                    <div class="progress-step" data-step="pdf">📄 Generate PDF</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -506,14 +804,15 @@
                 // Check if we have valid config
                 if (!firebaseConfig || !firebaseConfig.projectId) {
                     console.error('Firebase config missing projectId');
-                    showConfigError();
+                    // Try anonymous mode
+                    tryAnonymousMode();
                     return;
                 }
 
-                // If apiKey is missing, show setup wizard instead of trying to init Firebase
+                // If apiKey is missing, try anonymous mode
                 if (!firebaseConfig.apiKey) {
-                    console.log('Firebase apiKey not configured - showing setup wizard');
-                    showConfigError();
+                    console.log('Firebase apiKey not configured - trying anonymous mode');
+                    tryAnonymousMode();
                     return;
                 }
 
@@ -535,7 +834,46 @@
                 });
             } catch (error) {
                 console.error('Firebase init error:', error);
-                showConfigError();
+                tryAnonymousMode();
+            }
+        }
+        
+        async function tryAnonymousMode() {
+            // Check if anonymous access is allowed by testing the API
+            try {
+                const response = await fetch('/api/meetings');
+                if (response.ok) {
+                    console.log('Anonymous mode enabled');
+                    showDashboardAnonymous();
+                    loadMeetingsAnonymous();
+                    return;
+                }
+            } catch (e) {
+                console.log('Anonymous mode not available');
+            }
+            showConfigError();
+        }
+        
+        function showDashboardAnonymous() {
+            document.getElementById('signin-view').style.display = 'none';
+            document.getElementById('loading-view').style.display = 'none';
+            document.getElementById('dashboard-view').style.display = 'block';
+
+            // Update user info for anonymous
+            document.getElementById('user-name').textContent = 'Anonymous User';
+            document.getElementById('user-email').textContent = 'No authentication required';
+            document.getElementById('user-avatar').textContent = '👤';
+        }
+        
+        async function loadMeetingsAnonymous() {
+            try {
+                const response = await fetch('/api/meetings');
+                if (response.ok) {
+                    const meetings = await response.json();
+                    renderMeetings(meetings);
+                }
+            } catch (error) {
+                console.error('Load meetings error:', error);
             }
         }
         
@@ -582,17 +920,19 @@
 
         // API call helper
         async function apiCall(endpoint, options = {}) {
-            if (!idToken) {
-                throw new Error('Not authenticated');
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            
+            // Add auth token if available
+            if (idToken) {
+                headers['Authorization'] = `Bearer ${idToken}`;
             }
 
             const response = await fetch(endpoint, {
                 ...options,
-                headers: {
-                    'Authorization': `Bearer ${idToken}`,
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                }
+                headers
             });
 
             if (!response.ok) {
@@ -618,29 +958,74 @@
             }
         }
 
-        // Render meetings list
+        // Render meetings list (separated into uploads and bot meetings)
         function renderMeetings(meetings) {
-            const container = document.getElementById('meetings-list');
+            const uploadsContainer = document.getElementById('uploads-list');
+            const meetingsContainer = document.getElementById('meetings-list');
 
             if (!meetings || meetings.length === 0) {
-                container.innerHTML = `
+                uploadsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <p>No uploads yet</p>
+                    </div>
+                `;
+                meetingsContainer.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">📋</div>
-                        <p>No meetings yet</p>
+                        <p>No bot meetings yet</p>
                     </div>
                 `;
                 return;
             }
 
-            container.innerHTML = meetings.map(meeting => `
-                <div class="meeting-item">
-                    <div class="meeting-info">
-                        <div class="meeting-title">${meeting.bot_name || 'Meeting'}</div>
-                        <div class="meeting-meta">${formatDate(meeting.created_at)}</div>
+            // Separate uploads from bot meetings
+            const uploads = meetings.filter(m => m.id && m.id.startsWith('upload-'));
+            const botMeetings = meetings.filter(m => !m.id || !m.id.startsWith('upload-'));
+
+            // Render uploads
+            if (uploads.length === 0) {
+                uploadsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <p>No uploads yet</p>
                     </div>
-                    <span class="meeting-status ${meeting.status}">${meeting.status}</span>
-                </div>
-            `).join('');
+                `;
+            } else {
+                uploadsContainer.innerHTML = uploads.map(meeting => `
+                    <div class="meeting-item" onclick="viewMeeting('${meeting.id}')" style="cursor: pointer;">
+                        <div class="meeting-info">
+                            <div class="meeting-title">${meeting.bot_name || meeting.title || 'Uploaded Transcript'}</div>
+                            <div class="meeting-meta">${formatDate(meeting.created_at)}</div>
+                        </div>
+                        <span class="meeting-status ${meeting.status}">${meeting.status}</span>
+                    </div>
+                `).join('');
+            }
+
+            // Render bot meetings
+            if (botMeetings.length === 0) {
+                meetingsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <p>No bot meetings yet</p>
+                    </div>
+                `;
+            } else {
+                meetingsContainer.innerHTML = botMeetings.map(meeting => `
+                    <div class="meeting-item" onclick="viewMeeting('${meeting.id}')" style="cursor: pointer;">
+                        <div class="meeting-info">
+                            <div class="meeting-title">${meeting.bot_name || 'Meeting'}</div>
+                            <div class="meeting-meta">${formatDate(meeting.created_at)}</div>
+                        </div>
+                        <span class="meeting-status ${meeting.status}">${meeting.status}</span>
+                    </div>
+                `).join('');
+            }
+        }
+        
+        function viewMeeting(meetingId) {
+            window.location.href = `/ui/meetings/${meetingId}`;
         }
 
         // Create new meeting
@@ -709,6 +1094,252 @@
             const date = new Date(dateString);
             return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
+
+        // ==========================================
+        // Upload Transcript Functions
+        // ==========================================
+        
+        let selectedFile = null;
+        let transcriptData = null;
+
+        function showUploadModal() {
+            document.getElementById('upload-modal').classList.add('show');
+        }
+
+        function hideUploadModal() {
+            document.getElementById('upload-modal').classList.remove('show');
+            clearFile();
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                processSelectedFile(file);
+            }
+        }
+
+        function processSelectedFile(file) {
+            if (!file.name.endsWith('.json')) {
+                showToast('Please select a JSON file', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    transcriptData = JSON.parse(e.target.result);
+                    showFilePreview(file, transcriptData);
+                } catch (err) {
+                    showToast('Invalid JSON file', 'error');
+                    clearFile();
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function showFilePreview(file, data) {
+            document.getElementById('upload-zone').style.display = 'none';
+            document.getElementById('file-preview').style.display = 'block';
+            document.getElementById('file-name').textContent = file.name;
+            
+            // Calculate stats
+            let segmentCount = 0;
+            let wordCount = 0;
+            let participants = new Set();
+            let duration = 0;
+
+            if (Array.isArray(data)) {
+                segmentCount = data.length;
+                data.forEach(segment => {
+                    if (segment.words) {
+                        wordCount += segment.words.length;
+                    }
+                    if (segment.participant?.name) {
+                        participants.add(segment.participant.name);
+                    }
+                    // Calculate duration from timestamps
+                    if (segment.words?.length > 0) {
+                        const lastWord = segment.words[segment.words.length - 1];
+                        const endTime = lastWord.end_timestamp?.relative || 0;
+                        if (endTime > duration) duration = endTime;
+                    }
+                });
+            }
+
+            const durationMin = Math.floor(duration / 60);
+            const durationSec = Math.floor(duration % 60);
+
+            document.getElementById('file-stats').innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                    <div>📊 ${segmentCount} segments</div>
+                    <div>📝 ${wordCount.toLocaleString()} words</div>
+                    <div>👥 ${participants.size} participants</div>
+                    <div>⏱️ ${durationMin}m ${durationSec}s</div>
+                </div>
+            `;
+
+            document.getElementById('process-btn').disabled = false;
+        }
+
+        function clearFile() {
+            selectedFile = null;
+            transcriptData = null;
+            document.getElementById('file-input').value = '';
+            document.getElementById('upload-zone').style.display = 'block';
+            document.getElementById('file-preview').style.display = 'none';
+            document.getElementById('process-btn').disabled = true;
+            document.getElementById('meeting-title').value = '';
+        }
+
+        async function processUpload() {
+            if (!transcriptData) {
+                showToast('No file selected', 'error');
+                return;
+            }
+
+            // Hide upload modal, show processing modal
+            hideUploadModal();
+            document.getElementById('processing-modal').classList.add('show');
+            
+            const title = document.getElementById('meeting-title').value || `Upload ${new Date().toLocaleDateString()}`;
+
+            // Reset progress steps
+            document.querySelectorAll('.progress-step').forEach(step => {
+                step.classList.remove('active', 'complete');
+            });
+
+            try {
+                updateProgress('upload', 'Uploading transcript...');
+                
+                // Submit for async processing
+                const result = await apiCall('/api/transcripts/upload', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        transcript: transcriptData,
+                        title: title
+                    })
+                });
+
+                const meetingId = result.meeting_id;
+                updateProgress('combine', 'Processing transcript...');
+                
+                // Poll for status
+                await pollForCompletion(meetingId);
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                document.getElementById('processing-modal').classList.remove('show');
+                showToast('Failed to process transcript: ' + error.message, 'error');
+            }
+        }
+        
+        async function pollForCompletion(meetingId) {
+            const statusMap = {
+                'queued': { step: 'upload', msg: 'Queued for processing...' },
+                'processing': { step: 'summarize', msg: 'AI is analyzing content...' },
+                'completed': { step: 'pdf', msg: 'Processing complete!' },
+                'failed': { step: null, msg: 'Processing failed' }
+            };
+            
+            let attempts = 0;
+            const maxAttempts = 120; // 10 minutes max (5s intervals)
+            
+            while (attempts < maxAttempts) {
+                try {
+                    const meeting = await apiCall(`/api/meetings/${meetingId}`);
+                    const status = meeting.status || 'processing';
+                    
+                    const statusInfo = statusMap[status] || { step: 'summarize', msg: `Status: ${status}` };
+                    
+                    if (statusInfo.step) {
+                        updateProgress(statusInfo.step, statusInfo.msg);
+                    }
+                    document.getElementById('processing-status').textContent = statusInfo.msg;
+                    
+                    if (status === 'completed') {
+                        // Mark all steps complete
+                        document.querySelectorAll('.progress-step').forEach(step => {
+                            step.classList.add('complete');
+                        });
+                        
+                        setTimeout(() => {
+                            document.getElementById('processing-modal').classList.remove('show');
+                            showToast('Transcript processed successfully!', 'success');
+                            loadMeetings();
+                        }, 1500);
+                        return;
+                    }
+                    
+                    if (status === 'failed') {
+                        document.getElementById('processing-modal').classList.remove('show');
+                        showToast('Processing failed: ' + (meeting.error || 'Unknown error'), 'error');
+                        return;
+                    }
+                    
+                    // Wait before next poll
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    attempts++;
+                    
+                } catch (error) {
+                    console.error('Poll error:', error);
+                    attempts++;
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+            }
+            
+            // Timeout
+            document.getElementById('processing-modal').classList.remove('show');
+            showToast('Processing is taking longer than expected. Check back later.', 'error');
+        }
+
+        function updateProgress(step, message) {
+            document.getElementById('processing-status').textContent = message;
+            
+            const stepEl = document.querySelector(`.progress-step[data-step="${step}"]`);
+            if (stepEl) {
+                // Mark previous steps as complete
+                let prevSibling = stepEl.previousElementSibling;
+                while (prevSibling) {
+                    prevSibling.classList.remove('active');
+                    prevSibling.classList.add('complete');
+                    prevSibling = prevSibling.previousElementSibling;
+                }
+                stepEl.classList.add('active');
+            }
+        }
+
+        // Drag and drop support
+        document.addEventListener('DOMContentLoaded', function() {
+            const uploadZone = document.getElementById('upload-zone');
+            
+            if (uploadZone) {
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    uploadZone.addEventListener(eventName, preventDefaults, false);
+                });
+
+                function preventDefaults(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    uploadZone.addEventListener(eventName, () => uploadZone.classList.add('dragover'));
+                });
+
+                ['dragleave', 'drop'].forEach(eventName => {
+                    uploadZone.addEventListener(eventName, () => uploadZone.classList.remove('dragover'));
+                });
+
+                uploadZone.addEventListener('drop', function(e) {
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        processSelectedFile(files[0]);
+                    }
+                });
+            }
+        });
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', initFirebase);
