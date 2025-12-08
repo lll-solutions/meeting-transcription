@@ -320,21 +320,32 @@ if [ -n "$API_KEY_ID" ]; then
     fi
 fi
 
-# Configure Identity Platform
+# Configure Identity Platform with Google Sign-In
 echo "Configuring Identity Platform..."
 ACCESS_TOKEN=$(gcloud auth print-access-token)
 
-# Enable email sign-in (Google Sign-In uses this)
+# Enable Google as a sign-in provider
+echo "Enabling Google Sign-In provider..."
 curl -s -X PATCH \
-    "https://identitytoolkit.googleapis.com/v2/projects/${PROJECT_ID}/config" \
+    "https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT_ID}/defaultSupportedIdpConfigs/google.com" \
     -H "Authorization: Bearer ${ACCESS_TOKEN}" \
     -H "X-Goog-User-Project: ${PROJECT_ID}" \
     -H "Content-Type: application/json" \
     -d '{
-        "signIn": {
-            "allowDuplicateEmails": false
-        }
-    }' > /dev/null 2>&1 || true
+        "enabled": true,
+        "clientId": "'${PROJECT_ID}'.apps.googleusercontent.com",
+        "clientSecret": ""
+    }' 2>/dev/null || \
+curl -s -X POST \
+    "https://identitytoolkit.googleapis.com/admin/v2/projects/${PROJECT_ID}/defaultSupportedIdpConfigs?idpId=google.com" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+    -H "X-Goog-User-Project: ${PROJECT_ID}" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "enabled": true,
+        "clientId": "'${PROJECT_ID}'.apps.googleusercontent.com",
+        "clientSecret": ""
+    }' 2>/dev/null || true
 
 echo -e "${GREEN}✓ Identity Platform configured${NC}"
 
