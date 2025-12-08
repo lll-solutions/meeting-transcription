@@ -14,7 +14,7 @@ RECALL_API_KEY = os.getenv("RECALL_API_KEY")
 BASE_URL = os.getenv("RECALL_API_BASE_URL", "https://us-west-2.recall.ai/api/v1")
 
 
-def create_bot(meeting_url: str, webhook_url: str, bot_name: str = "Meeting Assistant") -> dict | None:
+def create_bot(meeting_url: str, webhook_url: str, bot_name: str = "LLL Solutions (Kurt) Bot") -> dict | None:
     """
     Create a bot to join a meeting and record/transcribe.
     

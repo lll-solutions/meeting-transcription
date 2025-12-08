@@ -33,6 +33,9 @@ from src.pipeline import (
 
 app = Flask(__name__, static_folder='static')
 
+# Configure for large file uploads (50MB limit)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+
 # Initialize authentication
 init_auth(app)
 
@@ -176,7 +179,7 @@ def ui_meetings_list():
 def ui_create_meeting():
     """HTMX: Create a meeting and return updated list."""
     meeting_url = request.form.get('meeting_url')
-    bot_name = request.form.get('bot_name', 'Meeting Assistant')
+    bot_name = request.form.get('bot_name', 'LLL Solutions (Kurt) Bot')
     
     # Validate meeting URL
     is_valid, error = validate_meeting_url(meeting_url)
@@ -266,7 +269,7 @@ def create_meeting():
         return jsonify({"error": "meeting_url is required"}), 400
     
     meeting_url = data['meeting_url']
-    bot_name = data.get('bot_name', 'Meeting Assistant')
+    bot_name = data.get('bot_name', 'LLL Solutions (Kurt) Bot')
     
     # Validate meeting URL
     is_valid, error = validate_meeting_url(meeting_url)
@@ -470,7 +473,7 @@ def process_transcript(transcript_id: str, recording_id: str = None):
             # Step 3: Create chunks
             print("📦 Step 3: Creating educational chunks...")
             chunks_file = os.path.join(temp_dir, "transcript_chunks.json")
-            create_educational_chunks.create_educational_chunks(combined_file, chunks_file, chunk_minutes=10)
+            create_educational_chunks.create_educational_content_chunks(combined_file, chunks_file, chunk_minutes=10)
             
             # Step 4: LLM Summarization
             print("🤖 Step 4: Generating AI summary...")
@@ -577,6 +580,173 @@ def download_output(meeting_id, filename):
     
     from flask import Response
     return Response(content, mimetype=content_type)
+
+
+@app.route('/api/transcripts/upload', methods=['POST'])
+@require_auth
+def upload_transcript():
+    """
+    Upload a transcript JSON file and process it through the LLM pipeline.
+    
+    Processing is done asynchronously - the endpoint returns immediately
+    with a meeting_id that can be polled for status.
+    
+    Request body:
+    {
+        "transcript": [...],  // The transcript JSON data
+        "title": "Meeting Title"  // Optional title
+    }
+    """
+    import uuid
+    import threading
+    
+    data = request.json
+    
+    if not data or 'transcript' not in data:
+        return jsonify({"error": "transcript data is required"}), 400
+    
+    transcript_data = data['transcript']
+    title = data.get('title', f'Uploaded Transcript {datetime.now().strftime("%Y-%m-%d %H:%M")}')
+    
+    # Validate transcript format
+    if not isinstance(transcript_data, list):
+        return jsonify({"error": "Invalid transcript format - expected array"}), 400
+    
+    if len(transcript_data) == 0:
+        return jsonify({"error": "Transcript is empty"}), 400
+    
+    # Generate a unique meeting ID for this upload
+    meeting_id = f"upload-{uuid.uuid4().hex[:8]}"
+    
+    # Create meeting record with initial status
+    meeting = storage.create_meeting(
+        meeting_id=meeting_id,
+        user=g.user,
+        meeting_url=None,
+        bot_name=title
+    )
+    storage.update_meeting(meeting_id, {"status": "queued"})
+    
+    # Process in background thread
+    def background_process():
+        try:
+            process_uploaded_transcript(meeting_id, transcript_data, title)
+        except Exception as e:
+            print(f"❌ Background processing error: {e}")
+            import traceback
+            traceback.print_exc()
+            storage.update_meeting(meeting_id, {
+                "status": "failed",
+                "error": str(e)
+            })
+    
+    thread = threading.Thread(target=background_process)
+    thread.daemon = True
+    thread.start()
+    
+    # Return immediately with meeting_id for polling
+    return jsonify({
+        "status": "queued",
+        "meeting_id": meeting_id,
+        "title": title,
+        "message": "Processing started. Poll /api/meetings/{meeting_id} for status."
+    }), 202
+
+
+def process_uploaded_transcript(meeting_id: str, transcript_data: list, title: str = None) -> dict:
+    """
+    Process an uploaded transcript through the summarization pipeline.
+    
+    Args:
+        meeting_id: Unique ID for this upload
+        transcript_data: The transcript JSON data (list of segments)
+        title: Optional title for the transcript
+    
+    Returns:
+        dict: Processing results including output paths
+    """
+    import tempfile
+    
+    print(f"\n🔄 Starting pipeline for uploaded transcript {meeting_id}")
+    storage.update_meeting(meeting_id, {"status": "processing"})
+    
+    with tempfile.TemporaryDirectory() as temp_dir:
+        
+        # Step 1: Save the uploaded transcript
+        print("📥 Step 1: Saving uploaded transcript...")
+        transcript_file = os.path.join(temp_dir, "transcript_raw.json")
+        with open(transcript_file, 'w') as f:
+            json.dump(transcript_data, f, indent=2)
+        
+        # Step 2: Combine words
+        print("📝 Step 2: Combining words into sentences...")
+        combined_file = os.path.join(temp_dir, "transcript_combined.json")
+        combine_transcript_words.combine_transcript_words(transcript_file, combined_file)
+        
+        # Step 3: Create chunks
+        print("📦 Step 3: Creating educational chunks...")
+        chunks_file = os.path.join(temp_dir, "transcript_chunks.json")
+        create_educational_chunks.create_educational_content_chunks(combined_file, chunks_file, chunk_minutes=10)
+        
+        # Step 4: LLM Summarization
+        print("🤖 Step 4: Generating AI summary...")
+        summary_file = os.path.join(temp_dir, "summary.json")
+        summarize_educational_content.summarize_educational_content(
+            chunks_file, 
+            summary_file,
+            provider=os.getenv('LLM_PROVIDER', 'vertex_ai')
+        )
+        
+        # Step 5: Create study guide
+        print("📚 Step 5: Creating study guide...")
+        study_guide_file = os.path.join(temp_dir, "study_guide.md")
+        create_study_guide.create_markdown_study_guide(summary_file, study_guide_file)
+        
+        # Step 6: Convert to PDF
+        print("📄 Step 6: Generating PDF...")
+        pdf_file = os.path.join(temp_dir, "study_guide.pdf")
+        try:
+            markdown_to_pdf.convert_markdown_to_pdf(study_guide_file, pdf_file)
+        except Exception as e:
+            print(f"⚠️ PDF generation failed (non-fatal): {e}")
+            pdf_file = None
+        
+        # Step 7: Upload all files to storage
+        print("☁️ Step 7: Uploading to storage...")
+        outputs = {}
+        
+        files_to_upload = [
+            ("transcript_raw", transcript_file),
+            ("transcript_combined", combined_file),
+            ("transcript_chunks", chunks_file),
+            ("summary", summary_file),
+            ("study_guide_md", study_guide_file),
+        ]
+        
+        if pdf_file and os.path.exists(pdf_file):
+            files_to_upload.append(("study_guide_pdf", pdf_file))
+        
+        for name, local_path in files_to_upload:
+            if os.path.exists(local_path):
+                filename = os.path.basename(local_path)
+                stored_path = storage.save_file_from_path(meeting_id, filename, local_path)
+                outputs[name] = stored_path
+                print(f"   ✅ Uploaded: {filename}")
+        
+        # Update meeting with completed status
+        storage.update_meeting(meeting_id, {
+            "status": "completed",
+            "outputs": outputs,
+            "completed_at": datetime.now().isoformat(),
+            "title": title
+        })
+        
+        print(f"\n✅ Pipeline complete!")
+        print(f"   Meeting ID: {meeting_id}")
+        for name, path in outputs.items():
+            print(f"   - {name}: {path}")
+        
+        return {"outputs": outputs}
 
 
 if __name__ == '__main__':

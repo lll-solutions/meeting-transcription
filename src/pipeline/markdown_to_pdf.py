@@ -142,11 +142,16 @@ def html_to_pdf_chrome(html_file, pdf_file):
 
     return False
 
-def convert_markdown_to_pdf(md_file):
-    """Convert markdown file to PDF."""
+def convert_markdown_to_pdf(md_file, output_pdf=None):
+    """Convert markdown file to PDF.
+    
+    Args:
+        md_file: Path to markdown file
+        output_pdf: Optional output PDF path (defaults to same name as md_file)
+    """
     base_name = md_file.replace('.md', '')
     html_file = f"{base_name}.html"
-    pdf_file = f"{base_name}.pdf"
+    pdf_file = output_pdf or f"{base_name}.pdf"
 
     # Convert to HTML
     markdown_to_html(md_file, html_file)

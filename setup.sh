@@ -256,9 +256,72 @@ gcloud secrets add-iam-policy-binding RECALL_API_KEY \
 
 echo -e "${GREEN}✓ Recall.ai API key stored securely${NC}"
 
-# Step 6b: Authentication Setup (Identity Platform)
+# Step 6b: LLM Provider Selection
 echo ""
-echo -e "${BLUE}Step 6b: Setting up Google Sign-In Authentication...${NC}"
+echo -e "${BLUE}Step 6b: LLM Provider Configuration${NC}"
+echo ""
+
+echo "Choose your AI provider for generating summaries:"
+echo ""
+echo "  1) Vertex AI (Google Gemini) - Recommended for GCP"
+echo "     • Auto-authenticated on Cloud Run"
+echo "     • No additional API keys needed"
+echo "     • Uses gemini-1.5-pro model"
+echo ""
+echo "  2) Azure OpenAI (GPT-4)"
+echo "     • Requires Azure OpenAI resource"
+echo "     • Uses gpt-4o model"
+echo "     • Great if you have existing Azure investment"
+echo ""
+read -p "Choice [1]: " LLM_CHOICE
+LLM_CHOICE=${LLM_CHOICE:-1}
+
+if [ "$LLM_CHOICE" = "2" ]; then
+    LLM_PROVIDER="azure_openai"
+    echo ""
+    echo -e "${YELLOW}Setting up Azure OpenAI...${NC}"
+    echo ""
+    echo "You'll need your Azure OpenAI credentials."
+    echo "Find them in Azure Portal → Your OpenAI Resource → Keys and Endpoint"
+    echo ""
+    
+    read -sp "Enter your Azure OpenAI API Key (hidden): " AZURE_KEY
+    echo ""
+    read -p "Enter your Azure OpenAI Endpoint (e.g., https://your-resource.openai.azure.com/): " AZURE_ENDPOINT
+    read -p "Enter your Azure OpenAI Deployment name [gpt-4o]: " AZURE_DEPLOYMENT
+    AZURE_DEPLOYMENT=${AZURE_DEPLOYMENT:-gpt-4o}
+    
+    echo ""
+    echo "Storing Azure credentials in Secret Manager..."
+    
+    # Create Azure secrets
+    echo -n "$AZURE_KEY" | gcloud secrets create AZURE_OPENAI_API_KEY --data-file=- 2>/dev/null || {
+        echo -n "$AZURE_KEY" | gcloud secrets versions add AZURE_OPENAI_API_KEY --data-file=-
+    }
+    echo -n "$AZURE_ENDPOINT" | gcloud secrets create AZURE_OPENAI_ENDPOINT --data-file=- 2>/dev/null || {
+        echo -n "$AZURE_ENDPOINT" | gcloud secrets versions add AZURE_OPENAI_ENDPOINT --data-file=-
+    }
+    echo -n "$AZURE_DEPLOYMENT" | gcloud secrets create AZURE_OPENAI_DEPLOYMENT --data-file=- 2>/dev/null || {
+        echo -n "$AZURE_DEPLOYMENT" | gcloud secrets versions add AZURE_OPENAI_DEPLOYMENT --data-file=-
+    }
+    
+    # Grant access to Cloud Run service account
+    for SECRET in AZURE_OPENAI_API_KEY AZURE_OPENAI_ENDPOINT AZURE_OPENAI_DEPLOYMENT; do
+        gcloud secrets add-iam-policy-binding $SECRET \
+            --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+            --role="roles/secretmanager.secretAccessor" \
+            --quiet 2>/dev/null || true
+    done
+    
+    echo -e "${GREEN}✓ Azure OpenAI credentials stored securely${NC}"
+else
+    LLM_PROVIDER="vertex_ai"
+    echo -e "${GREEN}✓ Using Vertex AI (Gemini) - auto-authenticated on GCP${NC}"
+fi
+
+# Step 6c: Authentication Setup (Identity Platform)
+echo ""
+echo -e "${BLUE}Step 6c: Setting up Google Sign-In Authentication...${NC}"
 echo ""
 
 echo "Setting up secure authentication with Identity Platform."
@@ -375,7 +438,7 @@ cd "$SCRIPT_DIR"
 echo "Deploying with Identity Platform Authentication..."
 
 # Build environment variables
-ENV_VARS="LLM_PROVIDER=vertex_ai,GCP_REGION=us-central1,OUTPUT_BUCKET=${BUCKET_NAME},RETENTION_DAYS=30"
+ENV_VARS="LLM_PROVIDER=${LLM_PROVIDER},GCP_REGION=us-central1,OUTPUT_BUCKET=${BUCKET_NAME},RETENTION_DAYS=30"
 ENV_VARS="${ENV_VARS},AUTH_PROVIDER=firebase,FIREBASE_PROJECT_ID=${PROJECT_ID}"
 
 # Build secrets string - include API key if it was stored
@@ -384,13 +447,21 @@ SECRETS_STRING="RECALL_API_KEY=RECALL_API_KEY:latest"
 # Check if API key secret exists and add it
 if gcloud secrets describe FIREBASE_API_KEY --quiet 2>/dev/null; then
     SECRETS_STRING="${SECRETS_STRING},FIREBASE_API_KEY=FIREBASE_API_KEY:latest"
-    echo "Including API key from Secret Manager"
+    echo "Including Firebase API key from Secret Manager"
     
     # Ensure Cloud Run service account has access
     gcloud secrets add-iam-policy-binding FIREBASE_API_KEY \
         --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
         --role="roles/secretmanager.secretAccessor" \
         --quiet 2>/dev/null || true
+fi
+
+# Add Azure OpenAI secrets if using Azure
+if [ "$LLM_PROVIDER" = "azure_openai" ]; then
+    echo "Including Azure OpenAI secrets from Secret Manager"
+    SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_API_KEY=AZURE_OPENAI_API_KEY:latest"
+    SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_ENDPOINT=AZURE_OPENAI_ENDPOINT:latest"
+    SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_DEPLOYMENT=AZURE_OPENAI_DEPLOYMENT:latest"
 fi
 
 gcloud run deploy meeting-transcription \
@@ -453,6 +524,17 @@ else
     echo ""
     echo "Users can sign in immediately with their Google account!"
 fi
+
+# Show LLM provider info
+echo ""
+if [ "$LLM_PROVIDER" = "azure_openai" ]; then
+    echo -e "${GREEN}🤖 AI Provider: Azure OpenAI (GPT-4)${NC}"
+    echo "   Endpoint: $AZURE_ENDPOINT"
+    echo "   Deployment: $AZURE_DEPLOYMENT"
+else
+    echo -e "${GREEN}🤖 AI Provider: Vertex AI (Google Gemini)${NC}"
+    echo "   Auto-authenticated on Cloud Run"
+fi
 echo ""
 echo -e "${YELLOW}📡 Configure Recall.ai Webhook${NC}"
 echo ""
@@ -481,11 +563,25 @@ PROJECT_NUMBER=$PROJECT_NUMBER
 SERVICE_URL=$SERVICE_URL
 BUCKET_NAME=$BUCKET_NAME
 WEBHOOK_URL=${SERVICE_URL}/webhook/recall
+
+# Authentication
 AUTH_PROVIDER=firebase
 FIREBASE_PROJECT_ID=$PROJECT_ID
 FIREBASE_API_KEY=$FIREBASE_API_KEY
 FIREBASE_AUTH_DOMAIN=$FIREBASE_AUTH_DOMAIN
+
+# LLM Provider
+LLM_PROVIDER=$LLM_PROVIDER
 EOF
+
+# Add Azure info if applicable
+if [ "$LLM_PROVIDER" = "azure_openai" ]; then
+    cat >> .env.deployed << EOF
+AZURE_OPENAI_ENDPOINT=$AZURE_ENDPOINT
+AZURE_OPENAI_DEPLOYMENT=$AZURE_DEPLOYMENT
+# API Key stored in Secret Manager
+EOF
+fi
 
 echo -e "${GREEN}✓ Configuration saved to .env.deployed${NC}"
 echo ""

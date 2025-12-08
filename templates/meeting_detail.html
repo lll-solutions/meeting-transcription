@@ -103,13 +103,22 @@
     <div>
         <h2 class="text-xl font-bold text-white mb-4">Generated Files</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {% for name, path in meeting.outputs.items() %}
+            {# Render in specific order: Study guides first, then summary, then intermediate files #}
+            {% set preferred_order = ['study_guide_pdf', 'study_guide_md', 'summary', 'chunks', 'combined', 'transcript', 'transcript_chunks', 'transcript_combined', 'transcript_raw'] %}
+            {% for name in preferred_order %}
+            {% if name in meeting.outputs %}
+            {% set path = meeting.outputs[name] %}
             {% set filename = path.split('/')[-1] %}
             {% set file_icons = {
-                'transcript': ('text-accent-teal', 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'),
-                'summary': ('text-accent-violet', 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01'),
+                'study_guide_pdf': ('text-accent-coral', 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'),
                 'study_guide_md': ('text-accent-gold', 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253'),
-                'study_guide_pdf': ('text-accent-coral', 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z')
+                'summary': ('text-accent-violet', 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01'),
+                'transcript_chunks': ('text-blue-400', 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'),
+                'transcript_combined': ('text-green-400', 'M4 6h16M4 12h16M4 18h7'),
+                'transcript_raw': ('text-gray-400', 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'),
+                'transcript': ('text-accent-teal', 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'),
+                'combined': ('text-green-400', 'M4 6h16M4 12h16M4 18h7'),
+                'chunks': ('text-blue-400', 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10')
             } %}
             {% set icon_color, icon_path = file_icons.get(name, ('text-gray-400', 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4')) %}
             
@@ -132,6 +141,33 @@
                     Download
                 </div>
             </a>
+            {% endif %}
+            {% endfor %}
+            {# Render any remaining outputs not in preferred order #}
+            {% for name, path in meeting.outputs.items() %}
+            {% if name not in preferred_order %}
+            {% set filename = path.split('/')[-1] %}
+            {% set icon_color, icon_path = file_icons.get(name, ('text-gray-400', 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4')) %}
+            <a 
+                href="/api/meetings/{{ meeting.id }}/outputs/{{ filename }}" 
+                target="_blank"
+                class="glass-card rounded-2xl p-6 hover:border-midnight-500 transition-all group"
+            >
+                <div class="w-12 h-12 rounded-xl bg-midnight-800 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <svg class="w-6 h-6 {{ icon_color }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ icon_path }}"/>
+                    </svg>
+                </div>
+                <h3 class="font-semibold text-white mb-1">{{ name|replace('_', ' ')|title }}</h3>
+                <p class="text-sm text-gray-500">{{ filename }}</p>
+                <div class="mt-4 flex items-center text-sm text-gray-400 group-hover:text-accent-teal transition-colors">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Download
+                </div>
+            </a>
+            {% endif %}
             {% endfor %}
         </div>
     </div>
@@ -208,4 +244,5 @@
     </details>
 </div>
 {% endblock %}
+
 
