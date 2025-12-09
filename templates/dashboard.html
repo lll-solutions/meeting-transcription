@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - MeetingBot{% endblock %}
+
+{% block content %}
+<div class="space-y-8 animate-fade-in">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-bold text-white">Your Meetings</h1>
+            <p class="mt-1 text-gray-400">Transcribe, summarize, and create study guides from your meetings</p>
+        </div>
+        <button 
+            onclick="document.getElementById('new-meeting-modal').classList.remove('hidden')"
+            class="inline-flex items-center px-5 py-2.5 rounded-xl bg-gradient-to-r from-accent-teal to-accent-violet text-white font-semibold shadow-lg shadow-accent-violet/25 hover:shadow-accent-violet/40 transition-all duration-300 hover:scale-105"
+        >
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            New Meeting
+        </button>
+    </div>
+    
+    <!-- Stats cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="glass-card rounded-2xl p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400 font-medium">Total Meetings</p>
+                    <p class="text-3xl font-bold text-white mt-1">{{ meetings|length }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-accent-violet/20 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-accent-violet" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        
+        <div class="glass-card rounded-2xl p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400 font-medium">Completed</p>
+                    <p class="text-3xl font-bold text-accent-teal mt-1">{{ meetings|selectattr('status', 'equalto', 'completed')|list|length }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-accent-teal/20 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-accent-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        
+        <div class="glass-card rounded-2xl p-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-400 font-medium">Processing</p>
+                    <p class="text-3xl font-bold text-accent-gold mt-1">{{ meetings|selectattr('status', 'in', ['processing', 'transcribing', 'joining', 'in_meeting'])|list|length }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-accent-gold/20 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-accent-gold animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Meeting list -->
+    <div id="meetings-list" hx-get="/ui/meetings-list" hx-trigger="every 10s" hx-swap="innerHTML">
+        {% include "partials/meeting_list.html" %}
+    </div>
+</div>
+
+<!-- New Meeting Modal -->
+<div id="new-meeting-modal" class="hidden fixed inset-0 z-50 overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <!-- Backdrop -->
+        <div class="fixed inset-0 bg-midnight-950/80 backdrop-blur-sm transition-opacity" onclick="document.getElementById('new-meeting-modal').classList.add('hidden')"></div>
+        
+        <!-- Modal panel -->
+        <div class="relative glass-card rounded-3xl p-8 max-w-lg w-full mx-auto animate-slide-up">
+            <div class="absolute top-4 right-4">
+                <button onclick="document.getElementById('new-meeting-modal').classList.add('hidden')" class="text-gray-400 hover:text-white transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="text-left">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-teal to-accent-violet flex items-center justify-center mb-6">
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                
+                <h3 class="text-2xl font-bold text-white">Join a Meeting</h3>
+                <p class="mt-2 text-gray-400">Paste your meeting URL and our bot will join to transcribe and summarize.</p>
+                
+                <form 
+                    hx-post="/ui/meetings" 
+                    hx-target="#meetings-list" 
+                    hx-swap="innerHTML"
+                    hx-on::after-request="if(event.detail.successful) { document.getElementById('new-meeting-modal').classList.add('hidden'); document.getElementById('meeting-url').value = ''; showToast('Bot is joining the meeting!', 'success'); }"
+                    class="mt-6 space-y-4"
+                >
+                    <div>
+                        <label for="meeting-url" class="block text-sm font-medium text-gray-300 mb-2">Meeting URL</label>
+                        <input 
+                            type="url" 
+                            id="meeting-url"
+                            name="meeting_url" 
+                            required
+                            placeholder="https://zoom.us/j/123456789 or meet.google.com/abc-defg-hij"
+                            class="w-full px-4 py-3 rounded-xl bg-midnight-900 border border-midnight-700 text-white placeholder-gray-500 focus:outline-none focus:border-accent-violet focus:ring-2 focus:ring-accent-violet/20 transition-all"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label for="bot-name" class="block text-sm font-medium text-gray-300 mb-2">Bot Name <span class="text-gray-500">(optional)</span></label>
+                        <input 
+                            type="text" 
+                            id="bot-name"
+                            name="bot_name" 
+                            placeholder="Meeting Assistant"
+                            class="w-full px-4 py-3 rounded-xl bg-midnight-900 border border-midnight-700 text-white placeholder-gray-500 focus:outline-none focus:border-accent-violet focus:ring-2 focus:ring-accent-violet/20 transition-all"
+                        >
+                    </div>
+                    
+                    <button 
+                        type="submit"
+                        class="w-full mt-6 px-6 py-3.5 rounded-xl bg-gradient-to-r from-accent-teal to-accent-violet text-white font-semibold shadow-lg shadow-accent-violet/25 hover:shadow-accent-violet/40 transition-all duration-300 hover:scale-[1.02] flex items-center justify-center"
+                    >
+                        <span class="htmx-indicator mr-2">
+                            <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </span>
+                        Send Bot to Meeting
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+

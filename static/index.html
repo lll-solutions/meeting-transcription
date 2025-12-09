@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Transcription</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a24;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --success: #22c55e;
+            --border: #2a2a3a;
+        }
+
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            background-image:
+                radial-gradient(ellipse at top, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(139, 92, 246, 0.05) 0%, transparent 50%);
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .logo-text {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff, #a0a0b0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+
+        /* Sign In View */
+        #signin-view {
+            text-align: center;
+        }
+
+        .google-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            width: 100%;
+            padding: 0.875rem 1.5rem;
+            background: #fff;
+            color: #333;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .google-btn:hover {
+            background: #f5f5f5;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .google-btn:active {
+            transform: translateY(0);
+        }
+
+        .google-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin: 1.5rem 0;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* Dashboard View */
+        #dashboard-view {
+            display: none;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+        }
+
+        .user-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 1.25rem;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .user-details {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: 600;
+            margin-bottom: 0.125rem;
+        }
+
+        .user-email {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.75rem;
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: currentColor;
+            border-radius: 50%;
+        }
+
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.875rem 1.5rem;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .btn-danger {
+            background: transparent;
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Meetings List */
+        .meetings-section {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .section-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1rem;
+        }
+
+        .meeting-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .meeting-info {
+            flex: 1;
+        }
+
+        .meeting-title {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .meeting-meta {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .meeting-status {
+            padding: 0.25rem 0.625rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .meeting-status.completed {
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--success);
+        }
+
+        .meeting-status.processing {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--accent);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+            opacity: 0.5;
+        }
+
+        /* Loading State */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .toast.error {
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .toast.success {
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 1rem;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .modal-description {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: flex-end;
+            padding: 1.5rem;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Upload Zone */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 2.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-zone:hover {
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-zone.dragover {
+            border-color: var(--accent);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .upload-text {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .upload-hint {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* File Preview */
+        .file-preview {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .file-icon {
+            font-size: 1.5rem;
+        }
+
+        .file-name {
+            flex: 1;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-remove {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+
+        .file-remove:hover {
+            color: #ef4444;
+        }
+
+        .file-stats {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* Form Group */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .form-group input[type="text"] {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9375rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .form-group input[type="text"]::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.6;
+        }
+
+        /* Progress Steps */
+        .progress-steps {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-top: 1.5rem;
+        }
+
+        .progress-step {
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            transition: all 0.3s ease;
+        }
+
+        .progress-step.active {
+            background: rgba(99, 102, 241, 0.2);
+            color: var(--accent);
+        }
+
+        .progress-step.complete {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--success);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="logo">
+                <div class="logo-icon">📝</div>
+                <div class="logo-text">Meeting Transcription</div>
+            </div>
+
+            <!-- Sign In View -->
+            <div id="signin-view">
+                <h1>Welcome</h1>
+                <p class="subtitle">
+                    Transform your meetings into actionable insights with AI-powered transcription and study guides.
+                </p>
+
+                <form onsubmit="handleLogin(event)" style="text-align: left; margin-top: 2rem;">
+                    <div class="form-group">
+                        <label for="login-email">Email Address</label>
+                        <input type="text" id="login-email" placeholder="name@example.com" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="login-password">Password</label>
+                        <input type="password" id="login-password" placeholder="Enter your password" required
+                            class="form-control"
+                            style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit;">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1.5rem;">
+                        Sign In
+                    </button>
+                </form>
+            </div>
+
+            <!-- Loading View -->
+            <div id="loading-view" class="loading">
+                <div class="spinner"></div>
+                <p>Signing you in...</p>
+            </div>
+
+            <!-- Dashboard View -->
+            <div id="dashboard-view">
+                <div class="user-info">
+                    <div class="user-avatar" id="user-avatar">?</div>
+                    <div class="user-details">
+                        <div class="user-name" id="user-name">User</div>
+                        <div class="user-email" id="user-email">user@example.com</div>
+                    </div>
+                    <div class="status-badge">Connected</div>
+                </div>
+
+                <div class="actions">
+                    <button class="btn btn-primary" id="new-meeting-bot-btn" onclick="createMeeting()">
+                        ➕ New Meeting Bot
+                    </button>
+                    <button class="btn btn-secondary" onclick="showUploadModal()">
+                        📤 Upload Transcript
+                    </button>
+                    <button class="btn btn-secondary" onclick="loadMeetings()">
+                        🔄 Refresh Meetings
+                    </button>
+                </div>
+
+                <div class="meetings-section">
+                    <div class="section-title">📤 Uploads</div>
+                    <div id="uploads-list">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📄</div>
+                            <p>No uploads yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="meetings-section" style="margin-top: 1rem; padding-top: 1rem;">
+                    <div class="section-title">🤖 Bot Meetings</div>
+                    <div id="meetings-list">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <p>No bot meetings yet</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actions" style="margin-top: 1.5rem;">
+                    <button class="btn btn-danger" onclick="signOut()">
+                        Sign Out
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><a href="https://github.com/lll-solutions/meeting-transcription" target="_blank">Meeting Transcription
+                    Bot</a> by <a href="https://lll-solutions.com" target="_blank">LLL Solutions</a></p>
+            <p style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-secondary);">
+                Need help with customization or HIPAA compliance?
+                <a href="mailto:kurt@lll-solutions.com" style="color: var(--accent);">We'd love to collaborate</a>
+            </p>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <!-- Upload Modal -->
+    <div class="modal-overlay" id="upload-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Upload Transcript</h2>
+                <button class="modal-close" onclick="hideUploadModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">
+                    Upload a transcript JSON file to process through the LLM pipeline.
+                    The system will generate summaries and a study guide.
+                </p>
+
+                <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+                    <input type="file" id="file-input" accept=".json" style="display: none"
+                        onchange="handleFileSelect(event)">
+                    <div class="upload-icon">📁</div>
+                    <p class="upload-text">Click or drag a JSON file here</p>
+                    <p class="upload-hint">Supports Recall.ai transcript format</p>
+                </div>
+
+                <div id="file-preview" class="file-preview" style="display: none;">
+                    <div class="file-info">
+                        <span class="file-icon">📄</span>
+                        <span class="file-name" id="file-name"></span>
+                        <button class="file-remove" onclick="clearFile()">&times;</button>
+                    </div>
+                    <div class="file-stats" id="file-stats"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="meeting-title">Meeting Title (optional)</label>
+                    <input type="text" id="meeting-title" placeholder="e.g., Team Standup - Dec 8">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="hideUploadModal()">Cancel</button>
+                <button class="btn btn-primary" id="process-btn" onclick="processUpload()" disabled>
+                    🚀 Process Transcript
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Processing Modal -->
+    <div class="modal-overlay" id="processing-modal">
+        <div class="modal">
+            <div class="modal-body" style="text-align: center; padding: 3rem;">
+                <div class="spinner" style="margin: 0 auto 1.5rem;"></div>
+                <h2 style="margin-bottom: 0.5rem;">Processing Transcript</h2>
+                <p class="modal-description" id="processing-status">Uploading file...</p>
+                <div class="progress-steps" id="progress-steps">
+                    <div class="progress-step" data-step="upload">📤 Upload</div>
+                    <div class="progress-step" data-step="combine">📝 Combine Words</div>
+                    <div class="progress-step" data-step="chunk">📦 Create Chunks</div>
+                    <div class="progress-step" data-step="summarize">🤖 AI Summary</div>
+                    <div class="progress-step" data-step="guide">📚 Study Guide</div>
+                    <div class="progress-step" data-step="pdf">📄 Generate PDF</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // Auth State
+        let currentUser = null;
+        let authToken = localStorage.getItem('auth_token');
+        let authUser = JSON.parse(localStorage.getItem('auth_user') || 'null');
+        let featureFlags = {};
+
+        // Initialize
+        async function initApp() {
+            // Fetch feature flags first
+            await fetchFeatureFlags();
+
+            if (authToken && authUser) {
+                currentUser = authUser;
+                showDashboard(currentUser);
+                loadMeetings();
+            } else {
+                showSignIn();
+            }
+        }
+
+        // Fetch feature flags from backend
+        async function fetchFeatureFlags() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+                featureFlags = config.features || {};
+
+                // Apply feature flags to UI
+                applyFeatureFlags();
+            } catch (error) {
+                console.error('Failed to fetch feature flags:', error);
+                // Default to all features enabled if fetch fails
+                featureFlags = { botJoining: true };
+            }
+        }
+
+        // Apply feature flags to UI elements
+        function applyFeatureFlags() {
+            const newMeetingBtn = document.getElementById('new-meeting-bot-btn');
+            if (newMeetingBtn) {
+                if (featureFlags.botJoining === false) {
+                    newMeetingBtn.style.display = 'none';
+                } else {
+                    newMeetingBtn.style.display = 'flex';
+                }
+            }
+        }
+
+        // Handle Login Form Submission
+        async function handleLogin(event) {
+            event.preventDefault();
+
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+
+            if (!email || !password) {
+                showToast('Please enter email and password', 'error');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Success
+                    authToken = data.token;
+                    currentUser = data.user;
+
+                    localStorage.setItem('auth_token', authToken);
+                    localStorage.setItem('auth_user', JSON.stringify(currentUser));
+
+                    showDashboard(currentUser);
+                    loadMeetings();
+                    showToast('Signed in successfully', 'success');
+                } else {
+                    showToast(data.error || 'Login failed', 'error');
+                    showSignIn();
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showToast('Login failed: ' + error.message, 'error');
+                showSignIn();
+            }
+        }
+
+        // Sign out
+        function signOut() {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_user');
+            authToken = null;
+            currentUser = null;
+            showSignIn();
+            showToast('Signed out successfully', 'success');
+        }
+
+        // Get API Headers with Auth
+        function getHeaders() {
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
+            return headers;
+        }
+
+        // API call helper
+        async function apiCall(endpoint, options = {}) {
+            const headers = {
+                ...getHeaders(), // Use the new getHeaders function
+                ...options.headers
+            };
+
+            const response = await fetch(endpoint, {
+                ...options,
+                headers
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ error: 'Request failed' }));
+                throw new Error(error.error || error.message || 'Request failed');
+            }
+
+            return response.json();
+        }
+
+        // Load meetings
+        async function loadMeetings() {
+            try {
+                const meetings = await apiCall('/api/meetings');
+                renderMeetings(meetings);
+            } catch (error) {
+                console.error('Load meetings error:', error);
+                // If authentication fails, force sign out
+                if (error.message.includes('Authentication') || error.message.includes('Unauthorized')) {
+                    signOut();
+                    showToast('Session expired. Please sign in again.', 'error');
+                }
+            }
+        }
+
+        // Render meetings list (separated into uploads and bot meetings)
+        function renderMeetings(meetings) {
+            const uploadsContainer = document.getElementById('uploads-list');
+            const meetingsContainer = document.getElementById('meetings-list');
+
+            if (!meetings || meetings.length === 0) {
+                uploadsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <p>No uploads yet</p>
+                    </div>
+                `;
+                meetingsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <p>No bot meetings yet</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Separate uploads from bot meetings
+            const uploads = meetings.filter(m => m.id && m.id.startsWith('upload-'));
+            const botMeetings = meetings.filter(m => !m.id || !m.id.startsWith('upload-'));
+
+            // Render uploads
+            if (uploads.length === 0) {
+                uploadsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📄</div>
+                        <p>No uploads yet</p>
+                    </div>
+                `;
+            } else {
+                uploadsContainer.innerHTML = uploads.map(meeting => `
+                    <div class="meeting-item" onclick="viewMeeting('${meeting.id}')" style="cursor: pointer;">
+                        <div class="meeting-info">
+                            <div class="meeting-title">${meeting.bot_name || meeting.title || 'Uploaded Transcript'}</div>
+                            <div class="meeting-meta">${formatDate(meeting.created_at)}</div>
+                        </div>
+                        <span class="meeting-status ${meeting.status}">${meeting.status}</span>
+                    </div>
+                `).join('');
+            }
+
+            // Render bot meetings
+            if (botMeetings.length === 0) {
+                meetingsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <p>No bot meetings yet</p>
+                    </div>
+                `;
+            } else {
+                meetingsContainer.innerHTML = botMeetings.map(meeting => `
+                    <div class="meeting-item" onclick="viewMeeting('${meeting.id}')" style="cursor: pointer;">
+                        <div class="meeting-info">
+                            <div class="meeting-title">${meeting.bot_name || 'Meeting'}</div>
+                            <div class="meeting-meta">${formatDate(meeting.created_at)}</div>
+                        </div>
+                        <span class="meeting-status ${meeting.status}">${meeting.status}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function viewMeeting(meetingId) {
+            window.location.href = `/ui/meetings/${meetingId}`;
+        }
+
+        // Create new meeting
+        async function createMeeting() {
+            const meetingUrl = prompt('Enter the meeting URL (Zoom, Google Meet, etc.):');
+            if (!meetingUrl) return;
+
+            const botName = prompt('Enter bot name (optional, press Enter for default):', 'Meeting Assistant');
+
+            try {
+                showToast('Creating meeting bot...', 'success');
+                const meeting = await apiCall('/api/meetings', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        meeting_url: meetingUrl,
+                        bot_name: botName || 'Meeting Assistant'
+                    })
+                });
+                showToast('Meeting bot created!', 'success');
+                loadMeetings();
+            } catch (error) {
+                console.error('Create meeting error:', error);
+                showToast('Failed to create meeting: ' + error.message, 'error');
+            }
+        }
+
+        // UI Helpers
+        function showSignIn() {
+            document.getElementById('signin-view').style.display = 'block';
+            document.getElementById('loading-view').style.display = 'none';
+            document.getElementById('dashboard-view').style.display = 'none';
+        }
+
+        function showLoading() {
+            document.getElementById('signin-view').style.display = 'none';
+            document.getElementById('loading-view').style.display = 'block';
+            document.getElementById('dashboard-view').style.display = 'none';
+        }
+
+        function showDashboard(user) {
+            document.getElementById('signin-view').style.display = 'none';
+            document.getElementById('loading-view').style.display = 'none';
+            document.getElementById('dashboard-view').style.display = 'block';
+
+            // Update user info
+            document.getElementById('user-name').textContent = user.name || user.email || 'User';
+            document.getElementById('user-email').textContent = user.email;
+
+            const avatarEl = document.getElementById('user-avatar');
+            if (user.photoURL) { // Assuming user object might still have photoURL for display
+                avatarEl.innerHTML = `<img src="${user.photoURL}" alt="Avatar">`;
+            } else {
+                avatarEl.textContent = (user.name || user.email || '?')[0].toUpperCase();
+            }
+
+            // Apply feature flags after dashboard is shown
+            applyFeatureFlags();
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // ==========================================
+        // Upload Transcript Functions
+        // ==========================================
+
+        let selectedFile = null;
+        let transcriptData = null;
+
+        function showUploadModal() {
+            document.getElementById('upload-modal').classList.add('show');
+        }
+
+        function hideUploadModal() {
+            document.getElementById('upload-modal').classList.remove('show');
+            clearFile();
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                processSelectedFile(file);
+            }
+        }
+
+        function processSelectedFile(file) {
+            if (!file.name.endsWith('.json')) {
+                showToast('Please select a JSON file', 'error');
+                return;
+            }
+
+            selectedFile = file;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    transcriptData = JSON.parse(e.target.result);
+                    showFilePreview(file, transcriptData);
+                } catch (err) {
+                    showToast('Invalid JSON file', 'error');
+                    clearFile();
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function showFilePreview(file, data) {
+            document.getElementById('upload-zone').style.display = 'none';
+            document.getElementById('file-preview').style.display = 'block';
+            document.getElementById('file-name').textContent = file.name;
+
+            // Calculate stats
+            let segmentCount = 0;
+            let wordCount = 0;
+            let participants = new Set();
+            let duration = 0;
+
+            if (Array.isArray(data)) {
+                segmentCount = data.length;
+                data.forEach(segment => {
+                    if (segment.words) {
+                        wordCount += segment.words.length;
+                    }
+                    if (segment.participant?.name) {
+                        participants.add(segment.participant.name);
+                    }
+                    // Calculate duration from timestamps
+                    if (segment.words?.length > 0) {
+                        const lastWord = segment.words[segment.words.length - 1];
+                        const endTime = lastWord.end_timestamp?.relative || 0;
+                        if (endTime > duration) duration = endTime;
+                    }
+                });
+            }
+
+            const durationMin = Math.floor(duration / 60);
+            const durationSec = Math.floor(duration % 60);
+
+            document.getElementById('file-stats').innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                    <div>📊 ${segmentCount} segments</div>
+                    <div>📝 ${wordCount.toLocaleString()} words</div>
+                    <div>👥 ${participants.size} participants</div>
+                    <div>⏱️ ${durationMin}m ${durationSec}s</div>
+                </div>
+            `;
+
+            document.getElementById('process-btn').disabled = false;
+        }
+
+        function clearFile() {
+            selectedFile = null;
+            transcriptData = null;
+            document.getElementById('file-input').value = '';
+            document.getElementById('upload-zone').style.display = 'block';
+            document.getElementById('file-preview').style.display = 'none';
+            document.getElementById('process-btn').disabled = true;
+            document.getElementById('meeting-title').value = '';
+        }
+
+        async function processUpload() {
+            if (!transcriptData) {
+                showToast('No file selected', 'error');
+                return;
+            }
+
+            // Save transcript data to local variable before modal is hidden (which clears it)
+            const dataToUpload = transcriptData;
+            const title = document.getElementById('meeting-title').value || `Upload ${new Date().toLocaleDateString()}`;
+
+            // Hide upload modal, show processing modal
+            hideUploadModal();
+            document.getElementById('processing-modal').classList.add('show');
+
+            // Reset progress steps
+            document.querySelectorAll('.progress-step').forEach(step => {
+                step.classList.remove('active', 'complete');
+            });
+
+            try {
+                updateProgress('upload', 'Uploading transcript...');
+
+                // Submit for async processing
+                const result = await apiCall('/api/transcripts/upload', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        transcript: dataToUpload,
+                        title: title
+                    })
+                });
+
+                const meetingId = result.meeting_id;
+                updateProgress('combine', 'Processing transcript...');
+
+                // Poll for status
+                await pollForCompletion(meetingId);
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                document.getElementById('processing-modal').classList.remove('show');
+                showToast('Failed to process transcript: ' + error.message, 'error');
+            }
+        }
+
+        async function pollForCompletion(meetingId) {
+            const statusMap = {
+                'queued': { step: 'upload', msg: 'Queued for processing...' },
+                'processing': { step: 'summarize', msg: 'AI is analyzing content...' },
+                'completed': { step: 'pdf', msg: 'Processing complete!' },
+                'failed': { step: null, msg: 'Processing failed' }
+            };
+
+            let attempts = 0;
+            const maxAttempts = 120; // 10 minutes max (5s intervals)
+
+            while (attempts < maxAttempts) {
+                try {
+                    const meeting = await apiCall(`/api/meetings/${meetingId}`);
+                    const status = meeting.status || 'processing';
+
+                    const statusInfo = statusMap[status] || { step: 'summarize', msg: `Status: ${status}` };
+
+                    if (statusInfo.step) {
+                        updateProgress(statusInfo.step, statusInfo.msg);
+                    }
+                    document.getElementById('processing-status').textContent = statusInfo.msg;
+
+                    if (status === 'completed') {
+                        // Mark all steps complete
+                        document.querySelectorAll('.progress-step').forEach(step => {
+                            step.classList.add('complete');
+                        });
+
+                        setTimeout(() => {
+                            document.getElementById('processing-modal').classList.remove('show');
+                            showToast('Transcript processed successfully!', 'success');
+                            loadMeetings();
+                        }, 1500);
+                        return;
+                    }
+
+                    if (status === 'failed') {
+                        document.getElementById('processing-modal').classList.remove('show');
+                        showToast('Processing failed: ' + (meeting.error || 'Unknown error'), 'error');
+                        return;
+                    }
+
+                    // Wait before next poll
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    attempts++;
+
+                } catch (error) {
+                    console.error('Poll error:', error);
+                    attempts++;
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+            }
+
+            // Timeout
+            document.getElementById('processing-modal').classList.remove('show');
+            showToast('Processing is taking longer than expected. Check back later.', 'error');
+        }
+
+        function updateProgress(step, message) {
+            document.getElementById('processing-status').textContent = message;
+
+            const stepEl = document.querySelector(`.progress-step[data-step="${step}"]`);
+            if (stepEl) {
+                // Mark previous steps as complete
+                let prevSibling = stepEl.previousElementSibling;
+                while (prevSibling) {
+                    prevSibling.classList.remove('active');
+                    prevSibling.classList.add('complete');
+                    prevSibling = prevSibling.previousElementSibling;
+                }
+                stepEl.classList.add('active');
+            }
+        }
+
+        // Drag and drop support
+        document.addEventListener('DOMContentLoaded', function () {
+            const uploadZone = document.getElementById('upload-zone');
+
+            if (uploadZone) {
+                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                    uploadZone.addEventListener(eventName, preventDefaults, false);
+                });
+
+                function preventDefaults(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    uploadZone.addEventListener(eventName, () => uploadZone.classList.add('dragover'));
+                });
+
+                ['dragleave', 'drop'].forEach(eventName => {
+                    uploadZone.addEventListener(eventName, () => uploadZone.classList.remove('dragover'));
+                });
+
+                uploadZone.addEventListener('drop', function (e) {
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        processSelectedFile(files[0]);
+                    }
+                });
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}{{ meeting.bot_name or 'Meeting' }} - MeetingBot{% endblock %}
+
+{% block content %}
+<div class="space-y-8 animate-fade-in">
+    <!-- Back navigation -->
+    <div>
+        <a href="/" class="inline-flex items-center text-gray-400 hover:text-white transition-colors group">
+            <svg class="w-5 h-5 mr-2 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to Dashboard
+        </a>
+    </div>
+    
+    <!-- Meeting header -->
+    <div class="glass-card rounded-3xl p-8">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+            <div class="flex-1">
+                <div class="flex items-center gap-3 mb-4">
+                    <!-- Status badge -->
+                    {% set status_styles = {
+                        'completed': 'bg-accent-teal/20 text-accent-teal border-accent-teal/30',
+                        'processing': 'bg-accent-gold/20 text-accent-gold border-accent-gold/30',
+                        'transcribing': 'bg-accent-violet/20 text-accent-violet border-accent-violet/30',
+                        'in_meeting': 'bg-green-500/20 text-green-400 border-green-500/30',
+                        'joining': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                        'failed': 'bg-accent-coral/20 text-accent-coral border-accent-coral/30',
+                        'ended': 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                    } %}
+                    {% set style = status_styles.get(meeting.status, 'bg-gray-500/20 text-gray-400 border-gray-500/30') %}
+                    
+                    <span class="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium border {{ style }}">
+                        {% if meeting.status in ['processing', 'transcribing', 'joining'] %}
+                        <svg class="w-4 h-4 mr-2 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        {% elif meeting.status == 'in_meeting' %}
+                        <span class="w-2 h-2 mr-2 rounded-full bg-green-400 animate-pulse"></span>
+                        {% elif meeting.status == 'completed' %}
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        {% endif %}
+                        {{ meeting.status|replace('_', ' ')|title }}
+                    </span>
+                </div>
+                
+                <h1 class="text-3xl font-bold text-white mb-2">{{ meeting.bot_name or 'Meeting Assistant' }}</h1>
+                
+                <p class="text-gray-400 flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                    </svg>
+                    <a href="{{ meeting.meeting_url }}" target="_blank" class="hover:text-accent-teal transition-colors">
+                        {{ meeting.meeting_url }}
+                    </a>
+                </p>
+            </div>
+            
+            {% if meeting.status in ['joining', 'in_meeting'] %}
+            <button 
+                hx-delete="/ui/meetings/{{ meeting.id }}"
+                hx-target="body"
+                hx-confirm="Are you sure you want to remove the bot from this meeting?"
+                class="inline-flex items-center px-5 py-2.5 rounded-xl bg-accent-coral/20 text-accent-coral border border-accent-coral/30 hover:bg-accent-coral/30 transition-all font-medium"
+            >
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                </svg>
+                Leave Meeting
+            </button>
+            {% endif %}
+        </div>
+        
+        <!-- Meeting metadata -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8 pt-6 border-t border-midnight-700">
+            <div>
+                <p class="text-sm text-gray-500 mb-1">Meeting ID</p>
+                <p class="font-mono text-sm text-gray-300">{{ meeting.id }}</p>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500 mb-1">Created</p>
+                <p class="text-sm text-gray-300">{{ meeting.created_at[:19].replace('T', ' ') if meeting.created_at else 'N/A' }}</p>
+            </div>
+            {% if meeting.completed_at %}
+            <div>
+                <p class="text-sm text-gray-500 mb-1">Completed</p>
+                <p class="text-sm text-gray-300">{{ meeting.completed_at[:19].replace('T', ' ') }}</p>
+            </div>
+            {% endif %}
+            <div>
+                <p class="text-sm text-gray-500 mb-1">User</p>
+                <p class="text-sm text-gray-300">{{ meeting.user or 'anonymous' }}</p>
+            </div>
+        </div>
+    </div>
+    
+    {% if meeting.status == 'completed' and meeting.outputs %}
+    <!-- Output files -->
+    <div>
+        <h2 class="text-xl font-bold text-white mb-4">Generated Files</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {# Render in specific order: Study guides first, then summary, then intermediate files #}
+            {% set preferred_order = ['study_guide_pdf', 'study_guide_md', 'summary', 'chunks', 'combined', 'transcript', 'transcript_chunks', 'transcript_combined', 'transcript_raw'] %}
+            {% for name in preferred_order %}
+            {% if name in meeting.outputs %}
+            {% set path = meeting.outputs[name] %}
+            {% set filename = path.split('/')[-1] %}
+            {% set file_icons = {
+                'study_guide_pdf': ('text-accent-coral', 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'),
+                'study_guide_md': ('text-accent-gold', 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253'),
+                'summary': ('text-accent-violet', 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01'),
+                'transcript_chunks': ('text-blue-400', 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10'),
+                'transcript_combined': ('text-green-400', 'M4 6h16M4 12h16M4 18h7'),
+                'transcript_raw': ('text-gray-400', 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'),
+                'transcript': ('text-accent-teal', 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'),
+                'combined': ('text-green-400', 'M4 6h16M4 12h16M4 18h7'),
+                'chunks': ('text-blue-400', 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10')
+            } %}
+            {% set icon_color, icon_path = file_icons.get(name, ('text-gray-400', 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4')) %}
+            
+            <a 
+                href="/api/meetings/{{ meeting.id }}/outputs/{{ filename }}" 
+                target="_blank"
+                class="glass-card rounded-2xl p-6 hover:border-midnight-500 transition-all group"
+            >
+                <div class="w-12 h-12 rounded-xl bg-midnight-800 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <svg class="w-6 h-6 {{ icon_color }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ icon_path }}"/>
+                    </svg>
+                </div>
+                <h3 class="font-semibold text-white mb-1">{{ name|replace('_', ' ')|title }}</h3>
+                <p class="text-sm text-gray-500">{{ filename }}</p>
+                <div class="mt-4 flex items-center text-sm text-gray-400 group-hover:text-accent-teal transition-colors">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Download
+                </div>
+            </a>
+            {% endif %}
+            {% endfor %}
+            {# Render any remaining outputs not in preferred order #}
+            {% for name, path in meeting.outputs.items() %}
+            {% if name not in preferred_order %}
+            {% set filename = path.split('/')[-1] %}
+            {% set icon_color, icon_path = file_icons.get(name, ('text-gray-400', 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4')) %}
+            <a 
+                href="/api/meetings/{{ meeting.id }}/outputs/{{ filename }}" 
+                target="_blank"
+                class="glass-card rounded-2xl p-6 hover:border-midnight-500 transition-all group"
+            >
+                <div class="w-12 h-12 rounded-xl bg-midnight-800 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <svg class="w-6 h-6 {{ icon_color }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ icon_path }}"/>
+                    </svg>
+                </div>
+                <h3 class="font-semibold text-white mb-1">{{ name|replace('_', ' ')|title }}</h3>
+                <p class="text-sm text-gray-500">{{ filename }}</p>
+                <div class="mt-4 flex items-center text-sm text-gray-400 group-hover:text-accent-teal transition-colors">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Download
+                </div>
+            </a>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% elif meeting.status == 'failed' %}
+    <!-- Error state -->
+    <div class="glass-card rounded-2xl p-8 border-accent-coral/30">
+        <div class="flex items-start gap-4">
+            <div class="w-12 h-12 rounded-xl bg-accent-coral/20 flex items-center justify-center flex-shrink-0">
+                <svg class="w-6 h-6 text-accent-coral" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-lg font-semibold text-accent-coral mb-2">Processing Failed</h3>
+                <p class="text-gray-400">{{ meeting.error or 'An error occurred while processing this meeting.' }}</p>
+            </div>
+        </div>
+    </div>
+    {% elif meeting.status in ['processing', 'transcribing'] %}
+    <!-- Processing state with progress -->
+    <div class="glass-card rounded-2xl p-8" hx-get="/ui/meetings/{{ meeting.id }}" hx-trigger="every 5s" hx-select=".glass-card" hx-swap="outerHTML">
+        <div class="flex items-center gap-4 mb-6">
+            <div class="w-12 h-12 rounded-xl bg-accent-gold/20 flex items-center justify-center">
+                <svg class="w-6 h-6 text-accent-gold animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+            </div>
+            <div>
+                <h3 class="text-lg font-semibold text-white">Processing Your Meeting</h3>
+                <p class="text-gray-400">This may take a few minutes...</p>
+            </div>
+        </div>
+        
+        <!-- Pipeline steps -->
+        <div class="space-y-3">
+            {% set steps = [
+                ('Download transcript', meeting.status in ['processing']),
+                ('Combine into sentences', meeting.status in ['processing']),
+                ('Create educational chunks', meeting.status in ['processing']),
+                ('Generate AI summary', meeting.status in ['processing']),
+                ('Create study guide', meeting.status in ['processing']),
+                ('Generate PDF', meeting.status in ['processing']),
+                ('Upload to storage', meeting.status in ['processing'])
+            ] %}
+            {% for step_name, is_active in steps %}
+            <div class="flex items-center gap-3">
+                {% if is_active %}
+                <div class="w-5 h-5 rounded-full border-2 border-accent-gold flex items-center justify-center">
+                    <div class="w-2 h-2 rounded-full bg-accent-gold animate-pulse"></div>
+                </div>
+                <span class="text-accent-gold">{{ step_name }}</span>
+                {% else %}
+                <div class="w-5 h-5 rounded-full border-2 border-midnight-600"></div>
+                <span class="text-gray-500">{{ step_name }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Raw data section (collapsible) -->
+    <details class="glass-card rounded-2xl overflow-hidden">
+        <summary class="px-6 py-4 cursor-pointer hover:bg-midnight-800/50 transition-colors flex items-center justify-between">
+            <span class="font-medium text-gray-300">Raw Meeting Data</span>
+            <svg class="w-5 h-5 text-gray-500 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </summary>
+        <div class="px-6 pb-6">
+            <pre class="text-sm text-gray-400 font-mono bg-midnight-900 rounded-xl p-4 overflow-x-auto">{{ meeting|tojson(indent=2) }}</pre>
+        </div>
+    </details>
+</div>
+{% endblock %}
+
+
