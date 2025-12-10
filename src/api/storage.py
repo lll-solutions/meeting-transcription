@@ -180,27 +180,34 @@ class MeetingStorage:
     def list_meetings(self, user: str = None, status: str = None, limit: int = 100) -> List[Dict]:
         """
         List meetings with optional filters.
-        
+
         Args:
             user: Filter by user (None = all users)
             status: Filter by status (None = all statuses)
             limit: Maximum number of results
-        
+
         Returns:
             list: List of meeting records
         """
         if self.db:
+            # Fetch all meetings sorted by created_at (no composite index needed)
             query = self.db.collection("meetings")
-            
-            if user:
-                query = query.where("user", "==", user)
-            if status:
-                query = query.where("status", "==", status)
-            
             query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
-            query = query.limit(limit)
-            
-            return [doc.to_dict() for doc in query.stream()]
+            query = query.limit(limit * 2)  # Fetch extra in case we filter
+
+            # Filter in Python to avoid needing composite index
+            results = []
+            for doc in query.stream():
+                data = doc.to_dict()
+                if user and data.get("user") != user:
+                    continue
+                if status and data.get("status") != status:
+                    continue
+                results.append(data)
+                if len(results) >= limit:
+                    break
+
+            return results
         else:
             # Local: load all and filter
             meetings = []

@@ -253,43 +253,6 @@ else
     echo -e "${GREEN}✓ Firestore already configured${NC}"
 fi
 
-# Deploy Indexes
-echo ""
-echo "Deploying Firestore Indexes..."
-if [ -f "firestore.indexes.json" ]; then
-    gcloud firestore indexes deploy firestore.indexes.json --quiet 2>/dev/null || echo "Index deployment started (background)"
-    echo -e "${GREEN}✓ Indexes deployed${NC}"
-else
-    # Fallback to manual creation command if file missing
-    gcloud firestore indexes composite create \
-        --collection-group=meetings \
-        --field-config=field-path=user,order=ascending \
-        --field-config=field-path=created_at,order=descending \
-        --quiet 2>/dev/null || true
-    echo -e "${GREEN}✓ Index creation requested${NC}"
-fi
-
-# Wait for indexes to build
-echo "Waiting for indexes to build (this can take 2-5 minutes)..."
-sleep 15
-RETRY_COUNT=0
-MAX_RETRIES=24
-while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    INDEX_STATUS=$(gcloud firestore indexes composite list --format="value(state)" 2>/dev/null | grep -c "CREATING" || echo "0")
-    if [ "$INDEX_STATUS" == "0" ]; then
-        echo -e "${GREEN}✓ All indexes are ready!${NC}"
-        break
-    fi
-    echo "Indexes still building... ($((RETRY_COUNT + 1))/$MAX_RETRIES) - waiting 10s"
-    sleep 10
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-done
-
-if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-    echo -e "${YELLOW}⚠️  Indexes may still be building. The app might not work fully until they're complete.${NC}"
-    echo "You can check index status at: https://console.cloud.google.com/firestore/indexes?project=${PROJECT_ID}"
-fi
-
 # Step 5: Create storage bucket
 echo ""
 echo -e "${BLUE}Step 5: Creating storage bucket...${NC}"
