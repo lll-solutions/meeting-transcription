@@ -37,7 +37,8 @@ class User:
         password_hash: str = None,
         id: str = None,
         created_at: str = None,
-        provider: str = "db"
+        provider: str = "db",
+        timezone: str = "America/New_York"
     ):
         self.id = id or email
         self.email = email
@@ -45,6 +46,7 @@ class User:
         self.password_hash = password_hash
         self.created_at = created_at or datetime.utcnow().isoformat()
         self.provider = provider
+        self.timezone = timezone
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses (excludes sensitive data)."""
@@ -52,7 +54,8 @@ class User:
             "id": self.id,
             "email": self.email,
             "name": self.name,
-            "provider": self.provider
+            "provider": self.provider,
+            "timezone": self.timezone
         }
     
     def to_firestore(self) -> Dict[str, Any]:
@@ -62,7 +65,8 @@ class User:
             "name": self.name,
             "password_hash": self.password_hash,
             "created_at": self.created_at,
-            "provider": self.provider
+            "provider": self.provider,
+            "timezone": self.timezone
         }
     
     def __str__(self):
@@ -145,10 +149,71 @@ class AuthService:
                 email=data.get("email"),
                 name=data.get("name"),
                 password_hash=stored_hash,
-                created_at=data.get("created_at")
+                created_at=data.get("created_at"),
+                timezone=data.get("timezone", "America/New_York")
             )
-        
+
         return None
+
+    def get_user(self, email: str) -> Optional[User]:
+        """
+        Get user by email.
+        """
+        if not self.db:
+            return None
+
+        email = email.lower().strip()
+
+        doc_ref = self.db.collection("users").document(email)
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            return None
+
+        data = doc.to_dict()
+        return User(
+            id=doc.id,
+            email=data.get("email"),
+            name=data.get("name"),
+            password_hash=data.get("password_hash"),
+            created_at=data.get("created_at"),
+            timezone=data.get("timezone", "America/New_York"),
+            provider=data.get("provider", "db")
+        )
+
+    def update_user(self, email: str, updates: Dict[str, Any]) -> Tuple[Optional[User], str]:
+        """
+        Update user fields.
+
+        Args:
+            email: User email
+            updates: Dictionary of fields to update (e.g., {"timezone": "America/Los_Angeles"})
+
+        Returns:
+            (User, error_message)
+        """
+        if not self.db:
+            return None, "Database not available"
+
+        email = email.lower().strip()
+
+        doc_ref = self.db.collection("users").document(email)
+        doc = doc_ref.get()
+
+        if not doc.exists:
+            return None, "User not found"
+
+        allowed_fields = {"timezone", "name"}
+        filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+
+        if not filtered_updates:
+            return None, "No valid fields to update"
+
+        try:
+            doc_ref.update(filtered_updates)
+            return self.get_user(email), ""
+        except Exception as e:
+            return None, f"Failed to update user: {str(e)}"
 
     def create_token(self, user: User) -> str:
         """Generate a JWT token for the user."""

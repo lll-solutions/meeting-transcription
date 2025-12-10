@@ -111,6 +111,51 @@ FIREBASE_CONFIG = {
 storage = MeetingStorage(bucket_name=OUTPUT_BUCKET, local_dir=OUTPUT_DIR)
 
 
+def join_meeting_for_scheduler(meeting_url: str, bot_name: str, user: str) -> str:
+    """
+    Helper function for scheduler to join meetings.
+
+    Returns:
+        meeting_id if successful, None otherwise
+    """
+    try:
+        # Determine webhook URL
+        webhook_url = WEBHOOK_URL
+        if not webhook_url:
+            # Use environment-based default
+            base_url = os.getenv("BASE_URL", "")
+            if base_url:
+                webhook_url = f"{base_url.rstrip('/')}/webhook/recall"
+            else:
+                print("⚠️ No WEBHOOK_URL or BASE_URL configured for scheduled meeting")
+                return None
+
+        # Create bot
+        bot_data = recall.create_bot(meeting_url, webhook_url, bot_name)
+
+        if not bot_data:
+            return None
+
+        # Store meeting in persistent storage
+        meeting_id = bot_data['id']
+        storage.create_meeting(
+            meeting_id=meeting_id,
+            user=user,
+            meeting_url=meeting_url,
+            bot_name=bot_name
+        )
+
+        return meeting_id
+    except Exception as e:
+        print(f"Error joining meeting for scheduler: {e}")
+        return None
+
+
+# Initialize scheduler (will start automatically)
+from src.api.scheduler import init_scheduler
+scheduler = init_scheduler(join_meeting_for_scheduler)
+
+
 @app.before_request
 def set_current_user():
     """Set current user in request context using the auth module."""
@@ -361,6 +406,183 @@ def health_check():
         "files": "gcs" if storage.bucket else "local"
     })
 
+
+# =============================================================================
+# USER PREFERENCES ROUTES
+# =============================================================================
+
+@app.route('/api/users/me', methods=['GET'])
+@require_auth
+def get_current_user_info():
+    """Get current user information including preferences."""
+    from src.api.auth_db import get_auth_service
+    service = get_auth_service()
+
+    user = service.get_user(g.user)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    return jsonify(user.to_dict())
+
+
+@app.route('/api/users/me', methods=['PATCH'])
+@require_auth
+def update_current_user():
+    """Update current user preferences."""
+    from src.api.auth_db import get_auth_service
+    from src.api.timezone_utils import is_valid_timezone
+
+    service = get_auth_service()
+    data = request.json
+
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    # Validate timezone if provided
+    if 'timezone' in data and not is_valid_timezone(data['timezone']):
+        return jsonify({"error": "Invalid timezone"}), 400
+
+    user, error = service.update_user(g.user, data)
+    if error:
+        return jsonify({"error": error}), 400
+
+    return jsonify(user.to_dict())
+
+
+# =============================================================================
+# SCHEDULED MEETINGS ROUTES
+# =============================================================================
+
+@app.route('/api/scheduled-meetings', methods=['POST'])
+@require_auth
+def create_scheduled_meeting():
+    """
+    Schedule a bot to join a meeting at a specific time.
+
+    Request body:
+    {
+        "meeting_url": "https://zoom.us/j/123456789",
+        "scheduled_time": "2024-12-10T15:30:00",  # In user's timezone
+        "bot_name": "Meeting Assistant" (optional)
+    }
+    """
+    from src.api.scheduled_meetings import ScheduledMeeting, get_scheduled_meeting_storage
+    from src.api.timezone_utils import parse_user_datetime
+    from src.api.auth_db import get_auth_service
+
+    # Check if bot joining feature is enabled
+    if not FEATURES_BOT_JOINING:
+        return jsonify({
+            "error": "Bot joining feature is disabled",
+            "feature": "bot_joining",
+            "enabled": False
+        }), 403
+
+    data = request.json
+
+    if not data or 'meeting_url' not in data or 'scheduled_time' not in data:
+        return jsonify({"error": "meeting_url and scheduled_time are required"}), 400
+
+    meeting_url = data['meeting_url']
+    bot_name = data.get('bot_name') or get_default_bot_name()
+
+    # Validate meeting URL
+    is_valid, error = validate_meeting_url(meeting_url)
+    if not is_valid:
+        return jsonify({"error": error}), 400
+
+    # Get user's timezone
+    auth_service = get_auth_service()
+    user = auth_service.get_user(g.user)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    user_timezone = user.timezone
+
+    # Parse scheduled time (convert from user's timezone to UTC)
+    scheduled_time_utc = parse_user_datetime(data['scheduled_time'], user_timezone)
+    if not scheduled_time_utc:
+        return jsonify({"error": "Invalid scheduled_time format. Use ISO format like '2024-12-10T15:30:00'"}), 400
+
+    # Create scheduled meeting
+    scheduled_meeting = ScheduledMeeting(
+        meeting_url=meeting_url,
+        scheduled_time=scheduled_time_utc,
+        user=g.user,
+        bot_name=bot_name,
+        user_timezone=user_timezone
+    )
+
+    storage_service = get_scheduled_meeting_storage()
+    created_meeting, error = storage_service.create(scheduled_meeting)
+
+    if error:
+        return jsonify({"error": error}), 500
+
+    return jsonify(created_meeting.to_dict()), 201
+
+
+@app.route('/api/scheduled-meetings', methods=['GET'])
+@require_auth
+def list_scheduled_meetings():
+    """List scheduled meetings for the current user."""
+    from src.api.scheduled_meetings import get_scheduled_meeting_storage
+
+    storage_service = get_scheduled_meeting_storage()
+    user = g.user if g.user != 'anonymous' else None
+
+    status = request.args.get('status')
+    meetings = storage_service.list(user=user, status=status)
+
+    return jsonify([m.to_dict() for m in meetings])
+
+
+@app.route('/api/scheduled-meetings/<meeting_id>', methods=['GET'])
+@require_auth
+def get_scheduled_meeting(meeting_id):
+    """Get a scheduled meeting by ID."""
+    from src.api.scheduled_meetings import get_scheduled_meeting_storage
+
+    storage_service = get_scheduled_meeting_storage()
+    meeting = storage_service.get(meeting_id)
+
+    if not meeting:
+        return jsonify({"error": "Scheduled meeting not found"}), 404
+
+    # Check user owns this scheduled meeting
+    if meeting.user != g.user and g.user != 'anonymous':
+        return jsonify({"error": "Forbidden"}), 403
+
+    return jsonify(meeting.to_dict())
+
+
+@app.route('/api/scheduled-meetings/<meeting_id>', methods=['DELETE'])
+@require_auth
+def delete_scheduled_meeting(meeting_id):
+    """Cancel a scheduled meeting."""
+    from src.api.scheduled_meetings import get_scheduled_meeting_storage
+
+    storage_service = get_scheduled_meeting_storage()
+    meeting = storage_service.get(meeting_id)
+
+    if not meeting:
+        return jsonify({"error": "Scheduled meeting not found"}), 404
+
+    # Check user owns this scheduled meeting
+    if meeting.user != g.user and g.user != 'anonymous':
+        return jsonify({"error": "Forbidden"}), 403
+
+    success, error = storage_service.delete(meeting_id)
+
+    if error:
+        return jsonify({"error": error}), 500
+
+    return jsonify({"success": True}), 200
+
+
+# =============================================================================
+# MEETING ROUTES
+# =============================================================================
 
 @app.route('/api/meetings', methods=['POST'])
 @require_auth
