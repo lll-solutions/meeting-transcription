@@ -219,7 +219,8 @@ class AuthConfig:
             "/api/config",
             "/webhook/recall",
             "/api/auth/login",  # New login endpoint
-            "/api/auth/setup"   # New setup endpoint
+            "/api/auth/setup",  # New setup endpoint
+            "/api/scheduled-meetings/execute"  # Cloud Scheduler endpoint
         ]
         
         # Development mode

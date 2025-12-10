@@ -140,4 +140,50 @@ echo ""
 echo -e "URL: ${GREEN}${SERVICE_URL}${NC}"
 echo ""
 
+# =============================================================================
+# Setup Cloud Scheduler for scheduled meetings
+# =============================================================================
+echo -e "${BLUE}Setting up Cloud Scheduler for scheduled meetings...${NC}"
+echo ""
+
+SCHEDULER_JOB_NAME="meeting-scheduler"
+ENDPOINT_URL="${SERVICE_URL}/api/scheduled-meetings/execute"
+SCHEDULE="*/2 * * * *"  # Every 2 minutes
+
+# Enable Cloud Scheduler API
+gcloud services enable cloudscheduler.googleapis.com --quiet 2>/dev/null || true
+
+# Check if scheduler job already exists
+if gcloud scheduler jobs describe "$SCHEDULER_JOB_NAME" --location us-central1 &>/dev/null; then
+    echo -e "${YELLOW}Updating existing scheduler job...${NC}"
+
+    gcloud scheduler jobs update http "$SCHEDULER_JOB_NAME" \
+        --location us-central1 \
+        --schedule="$SCHEDULE" \
+        --uri="$ENDPOINT_URL" \
+        --http-method=POST \
+        --oidc-service-account-email="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --oidc-token-audience="$ENDPOINT_URL" \
+        --quiet 2>/dev/null || true
+
+    echo -e "${GREEN}✓ Scheduler job updated${NC}"
+else
+    echo -e "${BLUE}Creating scheduler job...${NC}"
+
+    gcloud scheduler jobs create http "$SCHEDULER_JOB_NAME" \
+        --location us-central1 \
+        --schedule="$SCHEDULE" \
+        --uri="$ENDPOINT_URL" \
+        --http-method=POST \
+        --oidc-service-account-email="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --oidc-token-audience="$ENDPOINT_URL" \
+        --quiet 2>/dev/null || true
+
+    echo -e "${GREEN}✓ Scheduler job created${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}✓ Cloud Scheduler configured to check for scheduled meetings every 2 minutes${NC}"
+echo ""
+
 

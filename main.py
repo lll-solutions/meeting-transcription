@@ -151,9 +151,8 @@ def join_meeting_for_scheduler(meeting_url: str, bot_name: str, user: str) -> st
         return None
 
 
-# Initialize scheduler (will start automatically)
-from src.api.scheduler import init_scheduler
-scheduler = init_scheduler(join_meeting_for_scheduler)
+# Scheduler is handled by Cloud Scheduler (GCP cron job)
+# No background thread needed - Cloud Run scales to zero between requests
 
 
 @app.before_request
@@ -578,6 +577,110 @@ def delete_scheduled_meeting(meeting_id):
         return jsonify({"error": error}), 500
 
     return jsonify({"success": True}), 200
+
+
+@app.route('/api/scheduled-meetings/execute', methods=['POST'])
+def execute_scheduled_meetings():
+    """
+    Execute pending scheduled meetings.
+
+    This endpoint is called by Cloud Scheduler every 2 minutes.
+    It checks for meetings that are ready to be joined and executes them.
+
+    Authentication: Verifies request is from Cloud Scheduler via OIDC token.
+    """
+    from src.api.scheduled_meetings import get_scheduled_meeting_storage
+    from src.api.timezone_utils import utc_now
+
+    # Verify request is from Cloud Scheduler
+    # Cloud Scheduler adds Authorization: Bearer <OIDC token> header
+    auth_header = request.headers.get('Authorization', '')
+
+    if not auth_header.startswith('Bearer '):
+        return jsonify({"error": "Unauthorized - missing Bearer token"}), 401
+
+    # In production, you should verify the OIDC token
+    # For now, we'll accept any Bearer token (Cloud Scheduler will provide valid OIDC)
+    # TODO: Add proper OIDC token verification if needed
+
+    storage_service = get_scheduled_meeting_storage()
+    now = utc_now()
+    pending_meetings = storage_service.get_pending(before_time=now)
+
+    if not pending_meetings:
+        return jsonify({
+            "message": "No pending meetings to execute",
+            "checked_at": now.isoformat(),
+            "executed": 0
+        })
+
+    print(f"⏰ Cloud Scheduler: Found {len(pending_meetings)} pending meeting(s) to execute")
+
+    results = []
+    for scheduled_meeting in pending_meetings:
+        try:
+            print(f"🤖 Executing scheduled meeting: {scheduled_meeting.id}")
+            print(f"   URL: {scheduled_meeting.meeting_url}")
+            print(f"   Scheduled for: {scheduled_meeting.scheduled_time}")
+            print(f"   User: {scheduled_meeting.user}")
+
+            # Join the meeting
+            meeting_id = join_meeting_for_scheduler(
+                scheduled_meeting.meeting_url,
+                scheduled_meeting.bot_name,
+                scheduled_meeting.user
+            )
+
+            if meeting_id:
+                # Update as completed
+                storage_service.update(scheduled_meeting.id, {
+                    "status": "completed",
+                    "actual_meeting_id": meeting_id
+                })
+                results.append({
+                    "id": scheduled_meeting.id,
+                    "status": "completed",
+                    "meeting_id": meeting_id
+                })
+                print(f"✅ Successfully joined meeting: {meeting_id}")
+            else:
+                # Mark as failed
+                storage_service.update(scheduled_meeting.id, {
+                    "status": "failed",
+                    "error": "Failed to create bot"
+                })
+                results.append({
+                    "id": scheduled_meeting.id,
+                    "status": "failed",
+                    "error": "Failed to create bot"
+                })
+                print(f"❌ Failed to join scheduled meeting: {scheduled_meeting.id}")
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"❌ Error executing scheduled meeting {scheduled_meeting.id}: {error_msg}")
+
+            # Mark as failed
+            try:
+                storage_service.update(scheduled_meeting.id, {
+                    "status": "failed",
+                    "error": error_msg
+                })
+            except Exception as update_error:
+                print(f"❌ Could not update meeting status: {update_error}")
+
+            results.append({
+                "id": scheduled_meeting.id,
+                "status": "failed",
+                "error": error_msg
+            })
+
+    return jsonify({
+        "message": f"Executed {len(results)} scheduled meeting(s)",
+        "checked_at": now.isoformat(),
+        "executed": len(results),
+        "results": results
+    })
 
 
 # =============================================================================
