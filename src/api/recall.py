@@ -39,6 +39,7 @@ def create_bot(meeting_url: str, webhook_url: str, bot_name: str = "Meeting Assi
     payload = {
         "meeting_url": meeting_url,
         "bot_name": bot_name,
+        "webhook_url": webhook_url,
         "automatic_leave": {
             "waiting_room_timeout": 600,    # Stay in waiting room for 10 mins
             "noone_joined_timeout": 600,    # Wait 10 mins if no one joins

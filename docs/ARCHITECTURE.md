@@ -277,6 +277,264 @@ storage = MeetingStorage(
 
 ---
 
+## Recall.ai Webhooks
+
+### Overview
+
+The service receives real-time event notifications from Recall.ai via webhooks. These events drive the meeting lifecycle and trigger the transcription pipeline.
+
+### Webhook Configuration
+
+When creating a bot, the webhook URL is registered with Recall.ai:
+
+```python
+# In src/api/recall.py
+payload = {
+    "meeting_url": meeting_url,
+    "bot_name": bot_name,
+    "webhook_url": webhook_url,  # e.g., https://your-app.run.app/webhook/recall
+    # ...
+}
+```
+
+### Webhook Endpoint
+
+**POST** `/webhook/recall`
+
+- **Authentication**: Public endpoint (Recall.ai needs access)
+- **Security**: Consider webhook signature verification for production
+- **Handler**: `main.py:784-871`
+
+### Supported Events
+
+The service handles the following Recall.ai webhook events:
+
+#### 1. `bot.joined`
+
+**Trigger**: Bot successfully joins the meeting
+**Purpose**: Update status to show bot is active in the meeting
+**Database Update**: Sets status to `in_meeting`
+
+```json
+{
+  "event": "bot.joined",
+  "data": {
+    "bot": {
+      "id": "bot-uuid"
+    }
+  }
+}
+```
+
+**Handler**:
+```python
+if event == 'bot.joined':
+    bot_id = data.get('data', {}).get('bot', {}).get('id')
+    storage.update_meeting(bot_id, {"status": "in_meeting"})
+```
+
+**UI Impact**: Users will see the meeting status change from "joining" to "in_meeting"
+
+#### 2. `bot.done` / `bot.call_ended`
+
+**Trigger**: Meeting ends and bot leaves
+**Purpose**: Initiate transcript request
+**Database Update**: Sets status to `ended`, stores recording ID
+
+```json
+{
+  "event": "bot.done",
+  "data": {
+    "bot": {
+      "id": "bot-uuid"
+    },
+    "recording": {
+      "id": "recording-uuid"
+    }
+  }
+}
+```
+
+**Handler**:
+```python
+elif event in ['bot.done', 'bot.call_ended']:
+    bot_id = data.get('data', {}).get('bot', {}).get('id')
+    recording_id = data.get('data', {}).get('recording', {}).get('id')
+
+    # Update meeting status
+    storage.update_meeting(bot_id, {
+        "status": "ended",
+        "recording_id": recording_id
+    })
+
+    # Request async transcript
+    if recording_id:
+        time.sleep(5)  # Wait for recording to finalize
+        transcript_result = recall.create_async_transcript(recording_id)
+        if transcript_result:
+            storage.update_meeting(bot_id, {
+                "transcript_id": transcript_result['id'],
+                "status": "transcribing"
+            })
+```
+
+#### 3. `recording.done`
+
+**Trigger**: Recording processing is complete
+**Purpose**: Alternative trigger for transcript request (if not already requested)
+**Database Update**: None (transcript request only)
+
+```json
+{
+  "event": "recording.done",
+  "data": {
+    "recording": {
+      "id": "recording-uuid"
+    }
+  }
+}
+```
+
+#### 4. `transcript.done`
+
+**Trigger**: Transcript is ready for download
+**Purpose**: Start the summarization pipeline
+**Database Update**: Status changes throughout pipeline execution
+
+```json
+{
+  "event": "transcript.done",
+  "data": {
+    "transcript": {
+      "id": "transcript-uuid"
+    },
+    "recording": {
+      "id": "recording-uuid"
+    }
+  }
+}
+```
+
+**Handler**: This triggers the complete processing pipeline:
+```python
+elif event == 'transcript.done':
+    transcript_id = data.get('data', {}).get('transcript', {}).get('id')
+    recording_id = data.get('data', {}).get('recording', {}).get('id')
+
+    # Process through entire pipeline
+    process_transcript(transcript_id, recording_id)
+```
+
+**Pipeline Steps**:
+1. `status: "processing"` - Download transcript
+2. Combine words into sentences
+3. Create educational chunks
+4. LLM summarization
+5. Generate study guide (Markdown)
+6. Convert to PDF
+7. `status: "completed"` - Upload all outputs
+
+#### 5. `transcript.failed`
+
+**Trigger**: Transcript generation failed
+**Purpose**: Alert that manual intervention may be needed
+**Database Update**: Should update to failed status
+
+```json
+{
+  "event": "transcript.failed",
+  "data": {
+    "transcript": {
+      "id": "transcript-uuid",
+      "error": "..."
+    }
+  }
+}
+```
+
+### Event Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          WEBHOOK EVENT FLOW                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   1. Bot Created                                                            │
+│      status: "joining"                                                      │
+│      │                                                                      │
+│      ▼                                                                      │
+│   2. Webhook: bot.joined                                                    │
+│      status: "in_meeting"                                                   │
+│      │                                                                      │
+│      │... meeting happens ...                                              │
+│      │                                                                      │
+│      ▼                                                                      │
+│   3. Webhook: bot.done / bot.call_ended                                    │
+│      status: "ended"                                                        │
+│      → Trigger: Request async transcript                                   │
+│      status: "transcribing"                                                 │
+│      │                                                                      │
+│      ▼                                                                      │
+│   4. Webhook: transcript.done                                               │
+│      status: "processing"                                                   │
+│      → Trigger: Start summarization pipeline                               │
+│      │                                                                      │
+│      ▼                                                                      │
+│   5. Pipeline completes                                                     │
+│      status: "completed"                                                    │
+│                                                                             │
+│   Alternative Error Path:                                                  │
+│      ▼                                                                      │
+│   X. Webhook: transcript.failed                                             │
+│      status: "failed"                                                       │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Webhook Security
+
+#### Current Implementation
+- Endpoint is public (no authentication required)
+- Suitable for development and private deployments
+
+#### Production Recommendations
+- Implement webhook signature verification
+- Use Recall.ai's webhook secret to validate requests
+- Example implementation:
+
+```python
+import hmac
+import hashlib
+
+def verify_webhook_signature(request, webhook_secret):
+    """Verify webhook is from Recall.ai"""
+    signature = request.headers.get('X-Recall-Signature')
+    if not signature:
+        return False
+
+    payload = request.get_data()
+    computed = hmac.new(
+        webhook_secret.encode(),
+        payload,
+        hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(signature, computed)
+```
+
+### Status Transitions
+
+| From Status | Webhook Event | To Status | Notes |
+|------------|---------------|-----------|-------|
+| `joining` | `bot.joined` | `in_meeting` | Bot successfully entered |
+| `in_meeting` | `bot.done` | `ended` | Meeting finished |
+| `ended` | (internal) | `transcribing` | Transcript requested |
+| `transcribing` | `transcript.done` | `processing` | Pipeline starts |
+| `processing` | (internal) | `completed` | All outputs ready |
+| Any | `transcript.failed` | `failed` | Error occurred |
+
+---
+
 ## Data Flow
 
 ### Complete Pipeline Flow
