@@ -786,8 +786,9 @@ def remove_meeting(meeting_id):
 def handle_webhook():
     """
     Handle webhook events from Recall.ai.
-    
+
     Key events:
+    - bot.joining_call: Bot joining/joined the meeting
     - bot.done / bot.call_ended: Meeting ended
     - recording.done: Recording completed
     - transcript.done: Transcript ready
@@ -1099,31 +1100,151 @@ def upload_transcript():
         bot_name=title
     )
     storage.update_meeting(meeting_id, {"status": "queued"})
-    
-    # Process in background thread
-    def background_process():
-        try:
-            process_uploaded_transcript(meeting_id, transcript_data, title)
-        except Exception as e:
-            print(f"❌ Background processing error: {e}")
-            import traceback
-            traceback.print_exc()
-            storage.update_meeting(meeting_id, {
-                "status": "failed",
-                "error": str(e)
-            })
-    
-    thread = threading.Thread(target=background_process)
-    thread.daemon = True
-    thread.start()
-    
+
+    # Store transcript temporarily in GCS (Cloud Tasks has 100KB payload limit)
+    try:
+        bucket_name = os.getenv("OUTPUT_BUCKET")
+        blob_name = f"temp/{meeting_id}/transcript_upload.json"
+
+        from google.cloud import storage as gcs_storage
+        gcs_client = gcs_storage.Client()
+        bucket = gcs_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+        blob.upload_from_string(json_lib.dumps(transcript_data), content_type='application/json')
+
+        print(f"✅ Transcript stored temporarily: gs://{bucket_name}/{blob_name}")
+    except Exception as e:
+        print(f"❌ Failed to store transcript: {e}")
+        storage.update_meeting(meeting_id, {
+            "status": "failed",
+            "error": f"Failed to store transcript: {str(e)}"
+        })
+        return jsonify({"error": f"Failed to store transcript: {str(e)}"}), 500
+
+    # Create Cloud Task for background processing
+    try:
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+        location = os.getenv("GCP_REGION", "us-central1")
+        queue = "transcript-processing"
+
+        # Get the service URL
+        service_url = os.getenv("SERVICE_URL") or request.host_url.rstrip('/')
+        url = f"{service_url}/api/transcripts/process/{meeting_id}"
+
+        # Create Cloud Tasks client
+        client = tasks_v2.CloudTasksClient()
+        parent = client.queue_path(project_id, location, queue)
+
+        # Prepare task payload (only metadata, not transcript)
+        payload = {
+            "meeting_id": meeting_id,
+            "title": title
+        }
+
+        # Create the task
+        task = {
+            "http_request": {
+                "http_method": tasks_v2.HttpMethod.POST,
+                "url": url,
+                "headers": {"Content-Type": "application/json"},
+                "body": json_lib.dumps(payload).encode(),
+                "oidc_token": {
+                    "service_account_email": f"{os.getenv('PROJECT_NUMBER', '')}-compute@developer.gserviceaccount.com"
+                }
+            }
+        }
+
+        # Enqueue the task
+        response = client.create_task(request={"parent": parent, "task": task})
+        print(f"✅ Cloud Task created: {response.name}")
+
+    except Exception as e:
+        print(f"❌ Failed to create Cloud Task: {e}")
+        import traceback
+        traceback.print_exc()
+        storage.update_meeting(meeting_id, {
+            "status": "failed",
+            "error": f"Failed to queue processing: {str(e)}"
+        })
+        return jsonify({"error": f"Failed to queue processing: {str(e)}"}), 500
+
     # Return immediately with meeting_id for polling
     return jsonify({
         "status": "queued",
         "meeting_id": meeting_id,
         "title": title,
-        "message": "Processing started. Poll /api/meetings/{meeting_id} for status."
+        "message": "Processing queued. Poll /api/meetings/{meeting_id} for status."
     }), 202
+
+
+@app.route('/api/transcripts/process/<meeting_id>', methods=['POST'])
+def process_transcript_task(meeting_id: str):
+    """
+    Process endpoint called by Cloud Tasks.
+    Processes the uploaded transcript that was queued.
+
+    This endpoint is called by Cloud Tasks, not directly by users.
+    """
+    import json as json_lib
+
+    print(f"📥 Cloud Task received for {meeting_id}", flush=True)
+
+    # Get the meeting to retrieve metadata
+    meeting = storage.get_meeting(meeting_id)
+    if not meeting:
+        print(f"❌ Meeting {meeting_id} not found", flush=True)
+        return jsonify({"error": "Meeting not found"}), 404
+
+    # Get metadata from request body
+    data = request.json or {}
+    title = data.get('title', meeting.get('bot_name', 'Uploaded Transcript'))
+
+    # Fetch transcript from GCS temp storage
+    try:
+        bucket_name = os.getenv("OUTPUT_BUCKET")
+        blob_name = f"temp/{meeting_id}/transcript_upload.json"
+
+        from google.cloud import storage as gcs_storage
+        gcs_client = gcs_storage.Client()
+        bucket = gcs_client.bucket(bucket_name)
+        blob = bucket.blob(blob_name)
+
+        transcript_json = blob.download_as_text()
+        transcript_data = json_lib.loads(transcript_json)
+
+        print(f"✅ Transcript fetched from GCS: {len(transcript_data)} segments")
+    except Exception as e:
+        print(f"❌ Failed to fetch transcript from GCS: {e}")
+        storage.update_meeting(meeting_id, {
+            "status": "failed",
+            "error": f"Failed to fetch transcript: {str(e)}"
+        })
+        return jsonify({"error": f"Failed to fetch transcript: {str(e)}"}), 500
+
+    print(f"🔄 Starting processing for {meeting_id}", flush=True)
+
+    # Process the transcript (this will run until completion)
+    try:
+        process_uploaded_transcript(meeting_id, transcript_data, title)
+        print(f"✅ Processing completed for {meeting_id}", flush=True)
+
+        # Clean up temp file
+        try:
+            blob.delete()
+            print(f"🗑️ Temp transcript deleted")
+        except:
+            pass
+
+        return jsonify({"status": "completed", "meeting_id": meeting_id}), 200
+    except Exception as e:
+        print(f"❌ Processing failed for {meeting_id}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        storage.update_meeting(meeting_id, {
+            "status": "failed",
+            "error": str(e)
+        })
+        return jsonify({"status": "failed", "error": str(e)}), 500
 
 
 def process_uploaded_transcript(meeting_id: str, transcript_data: list, title: str = None) -> dict:
