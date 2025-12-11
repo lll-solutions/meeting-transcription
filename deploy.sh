@@ -186,4 +186,41 @@ echo ""
 echo -e "${GREEN}✓ Cloud Scheduler configured to check for scheduled meetings every 2 minutes${NC}"
 echo ""
 
+# =============================================================================
+# Setup Cloud Tasks for background processing
+# =============================================================================
+echo -e "${BLUE}Setting up Cloud Tasks for background processing...${NC}"
+echo ""
+
+# Enable Cloud Tasks API
+gcloud services enable cloudtasks.googleapis.com --quiet 2>/dev/null || true
+
+# Create task queue if it doesn't exist
+QUEUE_NAME="transcript-processing"
+QUEUE_EXISTS=$(gcloud tasks queues describe $QUEUE_NAME --location us-central1 --format="value(name)" 2>/dev/null || echo "")
+
+if [ -z "$QUEUE_EXISTS" ]; then
+    echo "Creating Cloud Tasks queue..."
+    gcloud tasks queues create $QUEUE_NAME \
+        --location=us-central1 \
+        --quiet 2>/dev/null || true
+    echo -e "${GREEN}✓ Cloud Tasks queue created${NC}"
+else
+    echo -e "${GREEN}✓ Cloud Tasks queue already exists${NC}"
+fi
+
+# Grant service account permission to create tasks
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="roles/cloudtasks.enqueuer" \
+    --quiet 2>/dev/null || true
+
+# Grant service account permission to invoke Cloud Run (for tasks to call the service)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="roles/run.invoker" \
+    --quiet 2>/dev/null || true
+
+echo -e "${GREEN}✓ Cloud Tasks configured${NC}"
+echo ""
 

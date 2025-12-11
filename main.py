@@ -798,10 +798,10 @@ def handle_webhook():
         
         print(f"\n📨 Received event: {event}")
         
-        # Handle bot joined
-        if event == 'bot.joined':
+        # Handle bot joining call
+        if event == 'bot.joining_call':
             bot_id = data.get('data', {}).get('bot', {}).get('id') or data.get('bot_id')
-            print(f"👋 Bot joined the call! ID: {bot_id}")
+            print(f"👋 Bot joining the call! ID: {bot_id}")
             if bot_id:
                 storage.update_meeting(bot_id, {"status": "in_meeting"})
 
@@ -1013,12 +1013,32 @@ def get_meeting_outputs(meeting_id):
 @app.route('/api/meetings/<meeting_id>/outputs/<filename>', methods=['GET'])
 @require_auth
 def download_output(meeting_id, filename):
-    """Download a specific output file."""
+    """
+    Download a specific output file.
+
+    For GCS storage, this generates a signed URL and redirects to it.
+    For local storage, this serves the file directly.
+    """
+    # Check if file exists
+    meeting = storage.get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    # Get signed URL (for GCS) or local path
+    download_url = storage.get_download_url(meeting_id, filename)
+
+    if not download_url:
+        return jsonify({"error": "File not found"}), 404
+
+    # If using GCS (URL starts with https://), redirect to the signed URL
+    if download_url.startswith('https://'):
+        return redirect(download_url)
+
+    # For local storage, serve the file directly
     content = storage.get_file(meeting_id, filename)
-    
     if not content:
         return jsonify({"error": "File not found"}), 404
-    
+
     # Determine content type
     content_type = "application/octet-stream"
     if filename.endswith(".json"):
@@ -1029,7 +1049,7 @@ def download_output(meeting_id, filename):
         content_type = "application/pdf"
     elif filename.endswith(".txt"):
         content_type = "text/plain"
-    
+
     from flask import Response
     return Response(content, mimetype=content_type)
 
@@ -1039,10 +1059,10 @@ def download_output(meeting_id, filename):
 def upload_transcript():
     """
     Upload a transcript JSON file and process it through the LLM pipeline.
-    
-    Processing is done asynchronously - the endpoint returns immediately
+
+    Processing is done asynchronously via Cloud Tasks - the endpoint returns immediately
     with a meeting_id that can be polled for status.
-    
+
     Request body:
     {
         "transcript": [...],  // The transcript JSON data
@@ -1050,38 +1070,27 @@ def upload_transcript():
     }
     """
     import uuid
-    import threading
-    import sys
-    
+    import json as json_lib
+    from google.cloud import tasks_v2
+
     data = request.json
-    print(f"DEBUG: Received request data type: {type(data)}", file=sys.stderr, flush=True)
-    print(f"DEBUG: Request data keys: {data.keys() if isinstance(data, dict) else 'not a dict'}", file=sys.stderr, flush=True)
-    
+
     if not data or 'transcript' not in data:
-        print(f"ERROR: Missing transcript in data", file=sys.stderr, flush=True)
         return jsonify({"error": "transcript data is required"}), 400
-    
+
     transcript_data = data['transcript']
-    print(f"DEBUG: transcript_data type: {type(transcript_data)}", file=sys.stderr, flush=True)
-    print(f"DEBUG: transcript_data is None: {transcript_data is None}", file=sys.stderr, flush=True)
-    print(f"DEBUG: transcript_data value (first 200 chars): {str(transcript_data)[:200]}", file=sys.stderr, flush=True)
-    
-    if isinstance(transcript_data, dict):
-        print(f"DEBUG: transcript_data keys: {transcript_data.keys()}", file=sys.stderr, flush=True)
-    
     title = data.get('title', f'Uploaded Transcript {datetime.now().strftime("%Y-%m-%d %H:%M")}')
-    
+
     # Validate transcript format
     if not isinstance(transcript_data, list):
-        print(f"ERROR: Invalid transcript format. Expected list, got {type(transcript_data)}", file=sys.stderr, flush=True)
         return jsonify({"error": "Invalid transcript format - expected array"}), 400
-    
+
     if len(transcript_data) == 0:
         return jsonify({"error": "Transcript is empty"}), 400
-    
+
     # Generate a unique meeting ID for this upload
     meeting_id = f"upload-{uuid.uuid4().hex[:8]}"
-    
+
     # Create meeting record with initial status
     meeting = storage.create_meeting(
         meeting_id=meeting_id,

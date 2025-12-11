@@ -548,6 +548,82 @@ else
     echo "   Auto-authenticated on Cloud Run"
 fi
 echo ""
+
+# =============================================================================
+# Setup Cloud Tasks for background processing
+# =============================================================================
+echo -e "${BLUE}Setting up Cloud Tasks for background processing...${NC}"
+echo ""
+
+# Enable Cloud Tasks API
+gcloud services enable cloudtasks.googleapis.com --quiet 2>/dev/null || true
+
+# Create task queue
+QUEUE_NAME="transcript-processing"
+QUEUE_EXISTS=$(gcloud tasks queues describe $QUEUE_NAME --location us-central1 --format="value(name)" 2>/dev/null || echo "")
+
+if [ -z "$QUEUE_EXISTS" ]; then
+    echo "Creating Cloud Tasks queue..."
+    gcloud tasks queues create $QUEUE_NAME \
+        --location=us-central1 \
+        --quiet 2>/dev/null || true
+    echo -e "${GREEN}✓ Cloud Tasks queue created${NC}"
+else
+    echo -e "${GREEN}✓ Cloud Tasks queue already exists${NC}"
+fi
+
+# Grant service account permission to create tasks
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="roles/cloudtasks.enqueuer" \
+    --quiet 2>/dev/null || true
+
+echo -e "${GREEN}✓ Cloud Tasks configured${NC}"
+echo ""
+
+# =============================================================================
+# Setup Firestore Indexes for Scheduled Meetings
+# =============================================================================
+echo -e "${BLUE}Setting up Firestore indexes for scheduled meetings...${NC}"
+echo ""
+
+# Deploy indexes in background (this can take 5-15 minutes)
+echo "Creating Firestore composite indexes (this runs in the background)..."
+
+# Create all required indexes for scheduled meetings
+# Index 1: For Cloud Scheduler execution (status + scheduled_time)
+gcloud firestore indexes composite create \
+    --collection-group=scheduled_meetings \
+    --query-scope=COLLECTION \
+    --field-config=field-path=status,order=ascending \
+    --field-config=field-path=scheduled_time,order=ascending \
+    --quiet 2>&1 &
+
+# Index 2: For listing user's scheduled meetings (user + scheduled_time)
+gcloud firestore indexes composite create \
+    --collection-group=scheduled_meetings \
+    --query-scope=COLLECTION \
+    --field-config=field-path=user,order=ascending \
+    --field-config=field-path=scheduled_time,order=descending \
+    --quiet 2>&1 &
+
+# Index 3: For filtering by user and status (user + status + scheduled_time)
+gcloud firestore indexes composite create \
+    --collection-group=scheduled_meetings \
+    --query-scope=COLLECTION \
+    --field-config=field-path=user,order=ascending \
+    --field-config=field-path=status,order=ascending \
+    --field-config=field-path=scheduled_time,order=descending \
+    --quiet 2>&1 &
+
+echo -e "${YELLOW}⏱️  Note: Firestore indexes are building in the background.${NC}"
+echo -e "${YELLOW}   The scheduled meetings feature will be fully available in 5-15 minutes.${NC}"
+echo -e "${YELLOW}   All other features are available immediately.${NC}"
+echo ""
+echo "   To check index status:"
+echo "   gcloud firestore indexes composite list"
+echo ""
+
 echo -e "${YELLOW}📡 Configure Recall.ai Webhook${NC}"
 echo ""
 echo "1. Go to: https://recall.ai/dashboard → Settings → Webhooks"
