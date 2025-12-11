@@ -33,11 +33,15 @@ HAS_ANTHROPIC = False
 HAS_OPENAI = False
 
 try:
-    import vertexai
-    from vertexai.generative_models import GenerativeModel, GenerationConfig
+    from google import genai
+    from google.genai import types
     HAS_VERTEX_AI = True
-except ImportError:
-    pass
+except ImportError as e:
+    print(f"⚠️ google.genai import failed: {e}")
+    HAS_VERTEX_AI = False
+except Exception as e:
+    print(f"❌ Unexpected error importing google.genai: {e}")
+    HAS_VERTEX_AI = False
 
 try:
     import anthropic
@@ -85,25 +89,22 @@ class EducationalSummarizer:
         """Initialize Google Vertex AI (Gemini)."""
         if not HAS_VERTEX_AI:
             raise ImportError(
-                "google-cloud-aiplatform not installed. "
-                "Run: pip install google-cloud-aiplatform"
+                "google-genai not installed. "
+                "Run: pip install google-genai"
             )
 
-        # Get project and location from environment or auto-detect
+        # Get project from environment or auto-detect
         project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT")
-        location = os.getenv("GCP_REGION", "us-central1")
 
-        # Initialize Vertex AI
-        vertexai.init(project=project, location=location)
+        # Initialize Vertex AI client
+        self.client = genai.Client(vertexai=True)
 
-        # Default to Gemini 1.5 Pro
-        self.model = model or os.getenv("VERTEX_AI_MODEL", "gemini-1.5-pro")
-        self.client = GenerativeModel(self.model)
+        # Default to Gemini 3 Pro Preview
+        self.model = model or os.getenv("VERTEX_AI_MODEL", "gemini-3-pro-preview")
 
         print(f"✅ Using Vertex AI: {self.model}")
         if project:
             print(f"   Project: {project}")
-        print(f"   Location: {location}")
 
     def _init_azure_openai(self, model: str = None):
         """Initialize Azure OpenAI."""
@@ -184,14 +185,22 @@ class EducationalSummarizer:
 
     def _call_vertex_ai(self, prompt: str, max_tokens: int) -> str:
         """Call Vertex AI (Gemini)."""
-        generation_config = GenerationConfig(
+        contents = [
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)]
+            )
+        ]
+
+        generation_config = types.GenerateContentConfig(
             max_output_tokens=max_tokens,
             temperature=0.7,
         )
 
-        response = self.client.generate_content(
-            prompt,
-            generation_config=generation_config
+        response = self.client.models.generate_content(
+            model=self.model,
+            contents=contents,
+            config=generation_config
         )
 
         return response.text
@@ -438,7 +447,7 @@ Environment Variables:
   Vertex AI (default):
     - GOOGLE_CLOUD_PROJECT (auto-detected on GCP)
     - GCP_REGION (default: us-central1)
-    - VERTEX_AI_MODEL (default: gemini-1.5-pro)
+    - VERTEX_AI_MODEL (default: gemini-3-pro-preview)
 
   Azure OpenAI:
     - AZURE_OPENAI_API_KEY

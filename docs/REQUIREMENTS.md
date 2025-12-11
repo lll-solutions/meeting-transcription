@@ -171,7 +171,7 @@ POST /api/meetings
 # Google Gemini (recommended for GCP deployment)
 GOOGLE_API_KEY=your_gemini_api_key
 LLM_PROVIDER=gemini
-LLM_MODEL=gemini-1.5-pro
+LLM_MODEL=gemini-3-pro-preview
 
 # Azure OpenAI
 AZURE_OPENAI_API_KEY=your_key
@@ -281,7 +281,7 @@ LLM_MODEL=claude-3-5-sonnet-20241022
 | Attribute | Description |
 |-----------|-------------|
 | Description | Receive webhook events from Recall.ai |
-| Events | bot.done, transcript.done, recording.done |
+| Events | bot.joining_call, bot.done, transcript.done, recording.done |
 | Security | Webhook signature verification |
 
 ---
@@ -514,7 +514,7 @@ Enable users to run the entire pipeline with no API costs:
 
 | Provider | Model | Context | Cost/1K tokens | Best For |
 |----------|-------|---------|----------------|----------|
-| Google Gemini | gemini-1.5-pro | 1M tokens | $0.00125 | GCP users, cost |
+| Google Gemini | gemini-3-pro-preview | 1M tokens | $0.00125 | GCP users, cost |
 | Azure OpenAI | gpt-4o | 128K tokens | $0.005-0.015 | Enterprise, Azure users |
 | OpenAI | gpt-4-turbo | 128K tokens | $0.01-0.03 | General purpose |
 | Anthropic | claude-3.5-sonnet | 200K tokens | $0.003-0.015 | Long context, accuracy |
