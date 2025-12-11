@@ -746,6 +746,9 @@
                     <button class="btn btn-secondary" onclick="loadMeetings()">
                         🔄 Refresh Meetings
                     </button>
+                    <button class="btn btn-secondary" onclick="openSettingsModal()">
+                        ⚙️ Settings
+                    </button>
                 </div>
 
                 <div class="meetings-section">
@@ -898,6 +901,58 @@
                 <button class="btn btn-secondary" onclick="closeScheduleModal()">Cancel</button>
                 <button class="btn btn-primary" id="schedule-submit-btn" onclick="submitScheduledMeeting()">
                     🚀 Schedule Bot
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">
+                    Configure your preferences and account settings.
+                </p>
+
+                <div class="form-group">
+                    <label for="settings-timezone">Timezone</label>
+                    <select id="settings-timezone"
+                        style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit; font-size: 0.9375rem;">
+                        <option value="America/New_York">Eastern Time (EST/EDT)</option>
+                        <option value="America/Chicago">Central Time (CST/CDT)</option>
+                        <option value="America/Denver">Mountain Time (MST/MDT)</option>
+                        <option value="America/Phoenix">Arizona (MST - no DST)</option>
+                        <option value="America/Los_Angeles">Pacific Time (PST/PDT)</option>
+                        <option value="America/Anchorage">Alaska Time (AKST/AKDT)</option>
+                        <option value="Pacific/Honolulu">Hawaii Time (HST)</option>
+                        <option value="UTC">UTC</option>
+                        <option value="Europe/London">London (GMT/BST)</option>
+                        <option value="Europe/Paris">Paris (CET/CEST)</option>
+                        <option value="Europe/Berlin">Berlin (CET/CEST)</option>
+                        <option value="Asia/Tokyo">Tokyo (JST)</option>
+                        <option value="Asia/Shanghai">Shanghai (CST)</option>
+                        <option value="Asia/Dubai">Dubai (GST)</option>
+                        <option value="Asia/Kolkata">India (IST)</option>
+                        <option value="Australia/Sydney">Sydney (AEDT/AEST)</option>
+                    </select>
+                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                        All meeting times will be displayed in your selected timezone.
+                    </p>
+                </div>
+
+                <div id="settings-success" style="color: var(--success); font-size: 0.875rem; margin-top: 1rem; display: none;">
+                    ✓ Settings saved successfully
+                </div>
+                <div id="settings-error" style="color: #ef4444; font-size: 0.875rem; margin-top: 1rem; display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSettingsModal()">Cancel</button>
+                <button class="btn btn-primary" id="settings-save-btn" onclick="saveSettings()">
+                    💾 Save Settings
                 </button>
             </div>
         </div>
@@ -1579,6 +1634,76 @@
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
+            }
+        }
+
+        // ==========================================
+        // SETTINGS MODAL
+        // ==========================================
+
+        function openSettingsModal() {
+            // Load current timezone setting
+            const timezoneSelect = document.getElementById('settings-timezone');
+            if (currentUserTimezone) {
+                timezoneSelect.value = currentUserTimezone;
+            }
+
+            // Hide success/error messages
+            document.getElementById('settings-success').style.display = 'none';
+            document.getElementById('settings-error').style.display = 'none';
+
+            // Show modal
+            document.getElementById('settings-modal').classList.add('show');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.remove('show');
+        }
+
+        async function saveSettings() {
+            const timezone = document.getElementById('settings-timezone').value;
+            const saveBtn = document.getElementById('settings-save-btn');
+            const successEl = document.getElementById('settings-success');
+            const errorEl = document.getElementById('settings-error');
+
+            // Hide previous messages
+            successEl.style.display = 'none';
+            errorEl.style.display = 'none';
+
+            // Disable button while saving
+            const originalText = saveBtn.textContent;
+            saveBtn.disabled = true;
+            saveBtn.textContent = '💾 Saving...';
+
+            try {
+                const response = await apiCall('/api/users/me', {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                        timezone: timezone
+                    })
+                });
+
+                // Update local timezone
+                currentUserTimezone = timezone;
+                updateTimezoneLabel();
+
+                // Show success message
+                successEl.style.display = 'block';
+                showToast('Settings saved successfully', 'success');
+
+                // Reload meetings to show updated times
+                setTimeout(() => {
+                    loadMeetings();
+                    closeSettingsModal();
+                }, 1000);
+
+            } catch (error) {
+                console.error('Save settings error:', error);
+                errorEl.textContent = 'Failed to save settings: ' + error.message;
+                errorEl.style.display = 'block';
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = originalText;
             }
         }
 

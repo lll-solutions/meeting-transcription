@@ -83,12 +83,12 @@
             </div>
             <div>
                 <p class="text-sm text-gray-500 mb-1">Created</p>
-                <p class="text-sm text-gray-300">{{ meeting.created_at[:19].replace('T', ' ') if meeting.created_at else 'N/A' }}</p>
+                <p class="text-sm text-gray-300">{{ meeting.created_at | format_user_time(user_timezone) }}</p>
             </div>
             {% if meeting.completed_at %}
             <div>
                 <p class="text-sm text-gray-500 mb-1">Completed</p>
-                <p class="text-sm text-gray-300">{{ meeting.completed_at[:19].replace('T', ' ') }}</p>
+                <p class="text-sm text-gray-300">{{ meeting.completed_at | format_user_time(user_timezone) }}</p>
             </div>
             {% endif %}
             <div>

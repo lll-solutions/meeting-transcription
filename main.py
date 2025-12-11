@@ -30,6 +30,7 @@ from src.pipeline import (
     create_study_guide,
     markdown_to_pdf
 )
+from src.api.timezone_utils import format_datetime_for_user, utc_now
 
 app = Flask(__name__, static_folder='static')
 
@@ -38,6 +39,35 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 # Initialize authentication
 init_auth(app)
+
+# Add Jinja filter for timezone formatting
+@app.template_filter('format_user_time')
+def format_user_time_filter(dt_str: str, user_timezone: str = "America/New_York") -> str:
+    """
+    Jinja filter to format datetime strings for user display.
+
+    Args:
+        dt_str: ISO format datetime string (assumed UTC)
+        user_timezone: User's timezone (defaults to EST)
+
+    Returns:
+        Formatted datetime string in user's timezone
+    """
+    if not dt_str:
+        return 'N/A'
+
+    try:
+        # Parse ISO datetime string
+        if 'T' in dt_str:
+            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+        else:
+            dt = datetime.fromisoformat(dt_str)
+
+        # Format for user
+        return format_datetime_for_user(dt, user_timezone, fmt="%Y-%m-%d %I:%M %p %Z")
+    except Exception:
+        # Fallback to original string if parsing fails
+        return dt_str[:19].replace('T', ' ') if dt_str else 'N/A'
 
 # =============================================================================
 # SECURITY CONFIGURATION
@@ -169,16 +199,31 @@ def set_current_user():
 def get_default_bot_name() -> str:
     """
     Get the default bot name based on the current user's name.
-    
+
     Returns:
         str: Bot name using user's name, or fallback to default
     """
     # Check if we have user info with a name
     if hasattr(g, 'user_info') and g.user_info and g.user_info.name:
         return f"{g.user_info.name}'s Bot"
-    
+
     # Fallback to default
     return "Meeting Assistant Bot"
+
+
+def get_user_timezone() -> str:
+    """
+    Get the current user's timezone preference.
+
+    Returns:
+        str: User's timezone, defaults to America/New_York (EST)
+    """
+    # Check if we have user info with a timezone
+    if hasattr(g, 'user_info') and g.user_info and hasattr(g.user_info, 'timezone'):
+        return g.user_info.timezone
+
+    # Fallback to EST
+    return "America/New_York"
 
 
 @app.route('/', methods=['GET'])
@@ -324,7 +369,8 @@ def setup_admin():
 def ui_meetings_list():
     """HTMX partial: Get meeting list HTML."""
     meetings = storage.list_meetings(user=g.user if g.user != 'anonymous' else None)
-    return render_template('partials/meeting_list.html', meetings=meetings)
+    user_timezone = get_user_timezone()
+    return render_template('partials/meeting_list.html', meetings=meetings, user_timezone=user_timezone)
 
 
 @app.route('/ui/meetings', methods=['POST'])
@@ -364,14 +410,15 @@ def ui_create_meeting():
     
     # Return updated meeting list
     meetings = storage.list_meetings(user=g.user if g.user != 'anonymous' else None)
-    return render_template('partials/meeting_list.html', meetings=meetings)
+    user_timezone = get_user_timezone()
+    return render_template('partials/meeting_list.html', meetings=meetings, user_timezone=user_timezone)
 
 
 @app.route('/ui/meetings/<meeting_id>', methods=['GET'])
 def ui_meeting_detail(meeting_id):
     """UI: Meeting detail page."""
     meeting = storage.get_meeting(meeting_id)
-    
+
     if not meeting:
         # Try from Recall API
         bot_status = recall.get_bot_status(meeting_id)
@@ -379,8 +426,9 @@ def ui_meeting_detail(meeting_id):
             meeting = bot_status
         else:
             return redirect(url_for('index'))
-    
-    return render_template('meeting_detail.html', meeting=meeting, user=g.user)
+
+    user_timezone = get_user_timezone()
+    return render_template('meeting_detail.html', meeting=meeting, user=g.user, user_timezone=user_timezone)
 
 
 @app.route('/ui/meetings/<meeting_id>', methods=['DELETE'])
@@ -392,15 +440,16 @@ def ui_delete_meeting(meeting_id):
     
     # Return updated meeting list
     meetings = storage.list_meetings(user=g.user if g.user != 'anonymous' else None)
-    return render_template('partials/meeting_list.html', meetings=meetings)
+    user_timezone = get_user_timezone()
+    return render_template('partials/meeting_list.html', meetings=meetings, user_timezone=user_timezone)
 
 
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint (no auth required for load balancer)."""
     return jsonify({
-        "status": "ok", 
-        "timestamp": datetime.now().isoformat(),
+        "status": "ok",
+        "timestamp": utc_now().isoformat(),
         "storage": "firestore" if storage.db else "local",
         "files": "gcs" if storage.bucket else "local"
     })
@@ -966,7 +1015,7 @@ def process_transcript(transcript_id: str, recording_id: str = None):
             storage.update_meeting(meeting_id, {
                 "status": "completed",
                 "outputs": outputs,
-                "completed_at": datetime.now().isoformat()
+                "completed_at": utc_now().isoformat()
             })
             
             print(f"\n✅ Pipeline complete!")
@@ -1080,7 +1129,7 @@ def upload_transcript():
         return jsonify({"error": "transcript data is required"}), 400
 
     transcript_data = data['transcript']
-    title = data.get('title', f'Uploaded Transcript {datetime.now().strftime("%Y-%m-%d %H:%M")}')
+    title = data.get('title', f'Uploaded Transcript {utc_now().strftime("%Y-%m-%d %H:%M")}')
 
     # Validate transcript format
     if not isinstance(transcript_data, list):
@@ -1331,7 +1380,7 @@ def process_uploaded_transcript(meeting_id: str, transcript_data: list, title: s
         storage.update_meeting(meeting_id, {
             "status": "completed",
             "outputs": outputs,
-            "completed_at": datetime.now().isoformat(),
+            "completed_at": utc_now().isoformat(),
             "title": title
         })
         
