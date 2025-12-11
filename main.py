@@ -122,12 +122,12 @@ def join_meeting_for_scheduler(meeting_url: str, bot_name: str, user: str) -> st
         # Determine webhook URL
         webhook_url = WEBHOOK_URL
         if not webhook_url:
-            # Use environment-based default
-            base_url = os.getenv("BASE_URL", "")
-            if base_url:
-                webhook_url = f"{base_url.rstrip('/')}/webhook/recall"
+            # Use SERVICE_URL from environment (set by deployment)
+            service_url = os.getenv("SERVICE_URL", "")
+            if service_url:
+                webhook_url = f"{service_url.rstrip('/')}/webhook/recall"
             else:
-                print("⚠️ No WEBHOOK_URL or BASE_URL configured for scheduled meeting")
+                print("⚠️ No WEBHOOK_URL or SERVICE_URL configured for scheduled meeting")
                 return None
 
         # Create bot
