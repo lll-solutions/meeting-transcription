@@ -98,8 +98,9 @@ https://YOUR-SERVICE-URL/webhook/recall
 ### Step 3: Enable Events
 
 Check these webhook events:
+- ✅ `bot.joining_call` (updates status to "in_meeting")
 - ✅ `bot.done`
-- ✅ `transcript.done`  
+- ✅ `transcript.done`
 - ✅ `recording.done`
 
 ### Step 4: Save

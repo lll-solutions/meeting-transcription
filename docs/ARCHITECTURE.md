@@ -309,15 +309,15 @@ payload = {
 
 The service handles the following Recall.ai webhook events:
 
-#### 1. `bot.joined`
+#### 1. `bot.joining_call`
 
-**Trigger**: Bot successfully joins the meeting
+**Trigger**: Bot is joining/has joined the meeting
 **Purpose**: Update status to show bot is active in the meeting
 **Database Update**: Sets status to `in_meeting`
 
 ```json
 {
-  "event": "bot.joined",
+  "event": "bot.joining_call",
   "data": {
     "bot": {
       "id": "bot-uuid"
@@ -328,7 +328,7 @@ The service handles the following Recall.ai webhook events:
 
 **Handler**:
 ```python
-if event == 'bot.joined':
+if event == 'bot.joining_call':
     bot_id = data.get('data', {}).get('bot', {}).get('id')
     storage.update_meeting(bot_id, {"status": "in_meeting"})
 ```
@@ -463,7 +463,7 @@ elif event == 'transcript.done':
 │      status: "joining"                                                      │
 │      │                                                                      │
 │      ▼                                                                      │
-│   2. Webhook: bot.joined                                                    │
+│   2. Webhook: bot.joining_call                                              │
 │      status: "in_meeting"                                                   │
 │      │                                                                      │
 │      │... meeting happens ...                                              │
@@ -526,7 +526,7 @@ def verify_webhook_signature(request, webhook_secret):
 
 | From Status | Webhook Event | To Status | Notes |
 |------------|---------------|-----------|-------|
-| `joining` | `bot.joined` | `in_meeting` | Bot successfully entered |
+| `joining` | `bot.joining_call` | `in_meeting` | Bot successfully entered |
 | `in_meeting` | `bot.done` | `ended` | Meeting finished |
 | `ended` | (internal) | `transcribing` | Transcript requested |
 | `transcribing` | `transcript.done` | `processing` | Pipeline starts |
