@@ -427,6 +427,16 @@ def ui_meeting_detail(meeting_id):
         else:
             return redirect(url_for('index'))
 
+    # Add signed download URLs for completed meetings
+    if meeting.get('status') == 'completed' and meeting.get('outputs'):
+        download_urls = {}
+        for name, path in meeting['outputs'].items():
+            filename = os.path.basename(path)
+            signed_url = storage.get_download_url(meeting_id, filename)
+            if signed_url:
+                download_urls[name] = signed_url
+        meeting['download_urls'] = download_urls
+
     user_timezone = get_user_timezone()
     return render_template('meeting_detail.html', meeting=meeting, user=g.user, user_timezone=user_timezone)
 

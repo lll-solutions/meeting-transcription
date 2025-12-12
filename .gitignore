@@ -61,3 +61,6 @@ temp/
 *.tmp
 
 test_output/
+
+synthetic_therapy_data/
+therapy-meeting-transcription/
