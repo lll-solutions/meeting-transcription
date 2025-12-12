@@ -427,16 +427,6 @@ def ui_meeting_detail(meeting_id):
         else:
             return redirect(url_for('index'))
 
-    # Add signed download URLs for completed meetings
-    if meeting.get('status') == 'completed' and meeting.get('outputs'):
-        download_urls = {}
-        for name, path in meeting['outputs'].items():
-            filename = os.path.basename(path)
-            signed_url = storage.get_download_url(meeting_id, filename)
-            if signed_url:
-                download_urls[name] = signed_url
-        meeting['download_urls'] = download_urls
-
     user_timezone = get_user_timezone()
     return render_template('meeting_detail.html', meeting=meeting, user=g.user, user_timezone=user_timezone)
 
@@ -826,18 +816,6 @@ def get_meeting(meeting_id):
             return jsonify(bot_status)
         return jsonify({"error": "Meeting not found"}), 404
 
-    # Add signed download URLs for completed meetings
-    if meeting.get('status') == 'completed' and meeting.get('outputs'):
-        download_urls = {}
-        for name, path in meeting['outputs'].items():
-            filename = os.path.basename(path)
-            signed_url = storage.get_download_url(meeting_id, filename)
-            if signed_url:
-                download_urls[name] = signed_url
-
-        # Add download_urls to response
-        meeting['download_urls'] = download_urls
-
     return jsonify(meeting)
 
 
@@ -1142,25 +1120,14 @@ def download_output(meeting_id, filename):
     """
     Download a specific output file.
 
-    For GCS storage, this generates a signed URL and redirects to it.
-    For local storage, this serves the file directly.
+    Fetches from GCS and serves directly through Flask.
     """
-    # Check if file exists
+    # Check if meeting exists
     meeting = storage.get_meeting(meeting_id)
     if not meeting:
         return jsonify({"error": "Meeting not found"}), 404
 
-    # Get signed URL (for GCS) or local path
-    download_url = storage.get_download_url(meeting_id, filename)
-
-    if not download_url:
-        return jsonify({"error": "File not found"}), 404
-
-    # If using GCS (URL starts with https://), redirect to the signed URL
-    if download_url.startswith('https://'):
-        return redirect(download_url)
-
-    # For local storage, serve the file directly
+    # Fetch file content from storage (GCS or local)
     content = storage.get_file(meeting_id, filename)
     if not content:
         return jsonify({"error": "File not found"}), 404
@@ -1177,7 +1144,9 @@ def download_output(meeting_id, filename):
         content_type = "text/plain"
 
     from flask import Response
-    return Response(content, mimetype=content_type)
+    return Response(content, mimetype=content_type, headers={
+        'Content-Disposition': f'attachment; filename="{filename}"'
+    })
 
 
 @app.route('/api/transcripts/upload', methods=['POST'])

@@ -123,7 +123,7 @@
             {% set icon_color, icon_path = file_icons.get(name, ('text-gray-400', 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4')) %}
             
             <a
-                href="{{ meeting.download_urls.get(name, '/api/meetings/' + meeting.id + '/outputs/' + filename) }}"
+                href="/api/meetings/{{ meeting.id }}/outputs/{{ filename }}"
                 target="_blank"
                 class="glass-card rounded-2xl p-6 hover:border-midnight-500 transition-all group"
             >
@@ -149,7 +149,7 @@
             {% set filename = path.split('/')[-1] %}
             {% set icon_color, icon_path = file_icons.get(name, ('text-gray-400', 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4')) %}
             <a
-                href="{{ meeting.download_urls.get(name, '/api/meetings/' + meeting.id + '/outputs/' + filename) }}"
+                href="/api/meetings/{{ meeting.id }}/outputs/{{ filename }}"
                 target="_blank"
                 class="glass-card rounded-2xl p-6 hover:border-midnight-500 transition-all group"
             >
