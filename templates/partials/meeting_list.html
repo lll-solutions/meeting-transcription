@@ -54,7 +54,7 @@
                 
                 <p class="text-xs text-gray-500 mt-2">
                     {% if meeting.created_at %}
-                    Created {{ meeting.created_at[:16].replace('T', ' at ') }}
+                    Created {{ meeting.created_at | format_user_time(user_timezone) }}
                     {% endif %}
                 </p>
             </div>
