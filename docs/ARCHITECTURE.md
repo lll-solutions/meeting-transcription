@@ -14,14 +14,19 @@ This document describes the technical architecture of the Meeting Transcription 
 │   │   User      │────▶│  Cloud Run  │────▶│     Recall.ai               │  │
 │   │  (Browser)  │     │  (Service)  │◀────│  (Meeting Bot + Recording)  │  │
 │   └─────────────┘     └──────┬──────┘     └─────────────────────────────┘  │
-│          │                   │                                              │
-│          │                   │                                              │
-│          ▼                   ▼                                              │
-│   ┌─────────────┐     ┌─────────────┐     ┌─────────────────────────────┐  │
-│   │    IAP      │     │  Firestore  │     │       Vertex AI             │  │
-│   │   (Auth)    │     │  (Metadata) │     │  (Gemini Summarization)     │  │
-│   └─────────────┘     └─────────────┘     └─────────────────────────────┘  │
-│                              │                                              │
+│          │                   │                      │                       │
+│          │                   │                      ▼                       │
+│          ▼                   ▼              ┌──────────────┐                │
+│   ┌─────────────┐     ┌─────────────┐      │ Cloud Tasks  │                │
+│   │    IAP      │     │  Firestore  │◀─────│  (Async      │                │
+│   │   (Auth)    │     │  (Metadata) │      │   Pipeline)  │                │
+│   └─────────────┘     └─────────────┘      └──────┬───────┘                │
+│                              │                     │                        │
+│                              │                     ▼                        │
+│                              │              ┌─────────────────────────────┐ │
+│                              │              │       Vertex AI             │ │
+│                              │              │  (Gemini Summarization)     │ │
+│                              │              └─────────────────────────────┘ │
 │                              ▼                                              │
 │                       ┌─────────────┐                                       │
 │                       │Cloud Storage│                                       │
@@ -398,8 +403,8 @@ elif event in ['bot.done', 'bot.call_ended']:
 #### 4. `transcript.done`
 
 **Trigger**: Transcript is ready for download
-**Purpose**: Start the summarization pipeline
-**Database Update**: Status changes throughout pipeline execution
+**Purpose**: Queue the summarization pipeline via Cloud Tasks
+**Database Update**: `status: "queued"` → `status: "processing"` (when task starts)
 
 ```json
 {
@@ -415,24 +420,41 @@ elif event in ['bot.done', 'bot.call_ended']:
 }
 ```
 
-**Handler**: This triggers the complete processing pipeline:
+**Handler**: This queues processing via Cloud Tasks (async):
 ```python
 elif event == 'transcript.done':
     transcript_id = data.get('data', {}).get('transcript', {}).get('id')
     recording_id = data.get('data', {}).get('recording', {}).get('id')
 
-    # Process through entire pipeline
-    process_transcript(transcript_id, recording_id)
+    # Find meeting ID for this transcript
+    meeting_id = # ... lookup by transcript_id
+
+    # Queue processing via Cloud Tasks (won't block webhook)
+    create_cloud_task(
+        url=f"/api/transcripts/process-recall/{meeting_id}",
+        payload={"transcript_id": transcript_id, "recording_id": recording_id}
+    )
+
+    # Update status to queued
+    storage.update_meeting(meeting_id, {"status": "queued"})
 ```
 
-**Pipeline Steps**:
-1. `status: "processing"` - Download transcript
-2. Combine words into sentences
-3. Create educational chunks
-4. LLM summarization
-5. Generate study guide (Markdown)
-6. Convert to PDF
-7. `status: "completed"` - Upload all outputs
+**Processing Flow**:
+1. Webhook receives `transcript.done` → creates Cloud Task → returns immediately ✅
+2. Cloud Tasks calls `/api/transcripts/process-recall/<meeting_id>` endpoint
+3. Endpoint calls `process_transcript()` which runs the pipeline:
+   - `status: "processing"` - Download transcript from Recall API
+   - Combine words into sentences
+   - Create educational chunks
+   - LLM summarization (Vertex AI)
+   - Generate study guide (Markdown)
+   - Convert to PDF
+   - `status: "completed"` - Upload all outputs to GCS
+
+**Why Cloud Tasks?**
+- Webhooks should respond quickly (< 10 seconds)
+- Processing can take 1-5 minutes depending on transcript length
+- Cloud Tasks handles retries and provides better observability
 
 #### 5. `transcript.failed`
 
