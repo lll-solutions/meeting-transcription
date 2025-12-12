@@ -759,14 +759,26 @@ def list_meetings():
 def get_meeting(meeting_id):
     """Get status of a specific meeting."""
     meeting = storage.get_meeting(meeting_id)
-    
+
     if not meeting:
         # Try to get from Recall API as fallback
         bot_status = recall.get_bot_status(meeting_id)
         if bot_status:
             return jsonify(bot_status)
         return jsonify({"error": "Meeting not found"}), 404
-    
+
+    # Add signed download URLs for completed meetings
+    if meeting.get('status') == 'completed' and meeting.get('outputs'):
+        download_urls = {}
+        for name, path in meeting['outputs'].items():
+            filename = os.path.basename(path)
+            signed_url = storage.get_download_url(meeting_id, filename)
+            if signed_url:
+                download_urls[name] = signed_url
+
+        # Add download_urls to response
+        meeting['download_urls'] = download_urls
+
     return jsonify(meeting)
 
 
@@ -848,12 +860,66 @@ def handle_webhook():
         elif event == 'transcript.done':
             transcript_id = data.get('data', {}).get('transcript', {}).get('id')
             recording_id = data.get('data', {}).get('recording', {}).get('id')
-            
+
             print(f"✅ Transcript ready! ID: {transcript_id}")
-            
+
             if transcript_id:
-                # Process the transcript through the pipeline
-                process_transcript(transcript_id, recording_id)
+                # Find the meeting ID for this transcript
+                meeting_id = None
+                meetings_list = storage.list_meetings()
+                for m in meetings_list:
+                    if m.get('transcript_id') == transcript_id:
+                        meeting_id = m['id']
+                        break
+
+                if not meeting_id:
+                    meeting_id = recording_id or transcript_id
+
+                # Queue processing via Cloud Tasks (async, won't block webhook)
+                try:
+                    from google.cloud import tasks_v2
+                    import json as json_lib
+
+                    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+                    location = os.getenv("GCP_REGION", "us-central1")
+                    queue = "transcript-processing"
+
+                    service_url = os.getenv("SERVICE_URL") or request.host_url.rstrip('/')
+                    url = f"{service_url}/api/transcripts/process-recall/{meeting_id}"
+
+                    client = tasks_v2.CloudTasksClient()
+                    parent = client.queue_path(project_id, location, queue)
+
+                    payload = {
+                        "transcript_id": transcript_id,
+                        "recording_id": recording_id
+                    }
+
+                    task = {
+                        "http_request": {
+                            "http_method": tasks_v2.HttpMethod.POST,
+                            "url": url,
+                            "headers": {"Content-Type": "application/json"},
+                            "body": json_lib.dumps(payload).encode(),
+                            "oidc_token": {
+                                "service_account_email": f"{os.getenv('PROJECT_NUMBER', '')}-compute@developer.gserviceaccount.com"
+                            }
+                        }
+                    }
+
+                    response = client.create_task(request={"parent": parent, "task": task})
+                    print(f"✅ Cloud Task created for transcript processing: {response.name}")
+
+                    # Update status to queued
+                    storage.update_meeting(meeting_id, {"status": "queued"})
+
+                except Exception as e:
+                    print(f"❌ Failed to create Cloud Task for transcript: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Fall back to synchronous processing if Cloud Tasks fails
+                    print(f"⚠️ Falling back to synchronous processing")
+                    process_transcript(transcript_id, recording_id)
         
         # Handle transcript failure
         elif event == 'transcript.failed':
@@ -1244,6 +1310,42 @@ def process_transcript_task(meeting_id: str):
             "status": "failed",
             "error": str(e)
         })
+        return jsonify({"status": "failed", "error": str(e)}), 500
+
+
+@app.route('/api/transcripts/process-recall/<meeting_id>', methods=['POST'])
+def process_recall_transcript_task(meeting_id: str):
+    """
+    Process endpoint called by Cloud Tasks for Recall API transcripts.
+    Downloads and processes transcripts from scheduled meetings.
+
+    This endpoint is called by Cloud Tasks, not directly by users.
+    """
+    import json as json_lib
+
+    print(f"📥 Cloud Task received for Recall transcript {meeting_id}", flush=True)
+
+    # Get metadata from request body
+    data = request.json or {}
+    transcript_id = data.get('transcript_id')
+    recording_id = data.get('recording_id')
+
+    if not transcript_id:
+        print(f"❌ No transcript_id provided", flush=True)
+        return jsonify({"error": "transcript_id is required"}), 400
+
+    print(f"🔄 Processing Recall transcript {transcript_id}", flush=True)
+
+    # Process the transcript (this will run until completion)
+    try:
+        process_transcript(transcript_id, recording_id)
+        print(f"✅ Recall transcript processing completed for {meeting_id}", flush=True)
+        return jsonify({"status": "completed", "meeting_id": meeting_id}), 200
+    except Exception as e:
+        print(f"❌ Recall transcript processing failed for {meeting_id}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        # Note: process_transcript handles its own error status updates
         return jsonify({"status": "failed", "error": str(e)}), 500
 
 
