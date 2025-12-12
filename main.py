@@ -886,30 +886,54 @@ def handle_webhook():
         # Handle recording completion
         elif event == 'recording.done':
             recording_id = data.get('data', {}).get('recording', {}).get('id')
-            print(f"🎬 Recording completed! ID: {recording_id}")
-            
+            bot_id = data.get('data', {}).get('bot', {}).get('id')
+            print(f"🎬 Recording completed! ID: {recording_id}, Bot ID: {bot_id}")
+
+            # Update meeting with recording_id so we can find it later
+            if bot_id and recording_id:
+                try:
+                    storage.update_meeting(bot_id, {"recording_id": recording_id})
+                    print(f"✅ Updated meeting {bot_id} with recording_id {recording_id}")
+                except Exception as e:
+                    print(f"⚠️ Could not update meeting with recording_id: {e}")
+
             if recording_id:
                 print(f"📝 Requesting async transcript for recording {recording_id}")
                 time.sleep(5)
-                recall.create_async_transcript(recording_id)
+                transcript_result = recall.create_async_transcript(recording_id)
+
+                # Update meeting with transcript_id
+                if bot_id and transcript_result:
+                    try:
+                        storage.update_meeting(bot_id, {
+                            "transcript_id": transcript_result['id'],
+                            "status": "transcribing"
+                        })
+                        print(f"✅ Updated meeting {bot_id} with transcript_id {transcript_result['id']}")
+                    except Exception as e:
+                        print(f"⚠️ Could not update meeting with transcript_id: {e}")
         
         # Handle transcript completion - TRIGGER THE PIPELINE
         elif event == 'transcript.done':
             transcript_id = data.get('data', {}).get('transcript', {}).get('id')
             recording_id = data.get('data', {}).get('recording', {}).get('id')
 
-            print(f"✅ Transcript ready! ID: {transcript_id}")
+            print(f"✅ Transcript ready! ID: {transcript_id}, Recording ID: {recording_id}")
 
             if transcript_id:
                 # Find the meeting ID for this transcript
                 meeting_id = None
                 meetings_list = storage.list_meetings()
                 for m in meetings_list:
-                    if m.get('transcript_id') == transcript_id:
+                    # Try matching by transcript_id first, then recording_id
+                    if m.get('transcript_id') == transcript_id or m.get('recording_id') == recording_id:
                         meeting_id = m['id']
+                        print(f"✅ Found meeting {meeting_id} for transcript {transcript_id}")
                         break
 
                 if not meeting_id:
+                    print(f"⚠️ No meeting found for transcript {transcript_id} / recording {recording_id}")
+                    print(f"   Using recording_id as meeting_id (fallback)")
                     meeting_id = recording_id or transcript_id
 
                 # Queue processing via Cloud Tasks (async, won't block webhook)
@@ -1115,12 +1139,12 @@ def get_meeting_outputs(meeting_id):
 
 
 @app.route('/api/meetings/<meeting_id>/outputs/<filename>', methods=['GET'])
-@require_auth
 def download_output(meeting_id, filename):
     """
     Download a specific output file.
 
     Fetches from GCS and serves directly through Flask.
+    No auth required - meeting IDs are UUIDs (hard to guess).
     """
     # Check if meeting exists
     meeting = storage.get_meeting(meeting_id)
