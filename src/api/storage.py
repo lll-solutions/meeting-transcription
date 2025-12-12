@@ -378,27 +378,60 @@ class MeetingStorage:
     def get_download_url(self, meeting_id: str, filename: str, expires_minutes: int = 60) -> Optional[str]:
         """
         Get a download URL for a file.
-        
+
         Args:
             meeting_id: Meeting ID
             filename: File name
             expires_minutes: URL expiration time (for signed URLs)
-        
+
         Returns:
             str: Download URL or local path
         """
         path = self.get_output_path(meeting_id, filename)
-        
+
         if self.bucket:
             blob = self.bucket.blob(path)
             if blob.exists():
-                # Generate signed URL
+                # Generate signed URL using IAM signBlob (works with default Cloud Run credentials)
                 from datetime import timedelta
-                url = blob.generate_signed_url(
-                    expiration=timedelta(minutes=expires_minutes),
-                    method='GET'
-                )
-                return url
+                from google.auth import iam
+                from google.auth.transport import requests as google_requests
+                import google.auth
+
+                try:
+                    credentials, project = google.auth.default()
+
+                    # Get service account email
+                    project_number = os.getenv('PROJECT_NUMBER')
+                    if project_number:
+                        service_account_email = f"{project_number}-compute@developer.gserviceaccount.com"
+                    else:
+                        service_account_email = f"{project}@appspot.gserviceaccount.com"
+
+                    # Use IAM signer for Cloud Run environment
+                    auth_request = google_requests.Request()
+                    signing_credentials = iam.Signer(
+                        request=auth_request,
+                        credentials=credentials,
+                        service_account_email=service_account_email
+                    )
+
+                    # Use v4 signing which supports IAM
+                    url = blob.generate_signed_url(
+                        version="v4",
+                        expiration=timedelta(minutes=expires_minutes),
+                        method='GET',
+                        service_account_email=service_account_email,
+                        access_token=credentials.token if hasattr(credentials, 'token') else None,
+                        credentials=signing_credentials
+                    )
+                    return url
+                except Exception as e:
+                    print(f"⚠️ Failed to generate signed URL: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Return None so endpoint can fall back
+                    return None
             return None
         else:
             if os.path.exists(path):
