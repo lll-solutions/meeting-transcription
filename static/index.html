@@ -885,6 +885,12 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="schedule-instructor-name">Instructor/Presenter Name (optional)</label>
+                    <input type="text" id="schedule-instructor-name"
+                        placeholder="e.g., Noelle Russell">
+                </div>
+
+                <div class="form-group">
                     <label for="schedule-datetime">
                         Select Time
                         <span id="user-timezone-label" style="font-size: 0.75rem; color: var(--text-secondary);">
@@ -973,6 +979,12 @@
 
             if (authToken && authUser) {
                 currentUser = authUser;
+
+                // Set timezone from user data
+                if (currentUser.timezone) {
+                    currentUserTimezone = currentUser.timezone;
+                }
+
                 showDashboard(currentUser);
                 loadMeetings();
 
@@ -1055,6 +1067,11 @@
 
                     localStorage.setItem('auth_token', authToken);
                     localStorage.setItem('auth_user', JSON.stringify(currentUser));
+
+                    // Set timezone from user data
+                    if (currentUser.timezone) {
+                        currentUserTimezone = currentUser.timezone;
+                    }
 
                     showDashboard(currentUser);
                     loadMeetings();
@@ -1275,7 +1292,17 @@
         function formatDate(dateString) {
             if (!dateString) return '';
             const date = new Date(dateString);
-            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const timezone = currentUserTimezone || 'America/New_York';
+            const options = {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: timezone,
+                timeZoneName: 'short'
+            };
+            return date.toLocaleString('en-US', options);
         }
 
         // ==========================================
@@ -1547,6 +1574,7 @@
         async function submitScheduledMeeting() {
             const meetingUrl = document.getElementById('schedule-meeting-url').value.trim();
             const botName = document.getElementById('schedule-bot-name').value.trim() || 'Meeting Assistant';
+            const instructorName = document.getElementById('schedule-instructor-name').value.trim();
             const datetimeLocal = document.getElementById('schedule-datetime').value;
             const errorEl = document.getElementById('schedule-validation-error');
 
@@ -1579,7 +1607,7 @@
             errorEl.style.display = 'none';
 
             // Submit
-            await scheduleBot(meetingUrl, botName, datetimeLocal);
+            await scheduleBot(meetingUrl, botName, instructorName, datetimeLocal);
         }
 
         function showValidationError(errorEl, message) {
@@ -1601,7 +1629,7 @@
             }
         }
 
-        async function scheduleBot(meetingUrl, botName, datetimeLocal) {
+        async function scheduleBot(meetingUrl, botName, instructorName, datetimeLocal) {
             const submitBtn = document.getElementById('schedule-submit-btn');
             const originalText = submitBtn.textContent;
             submitBtn.disabled = true;
@@ -1613,13 +1641,20 @@
                 // Need to send as ISO8601: "2024-12-10T15:30:00"
                 const isoDateTime = datetimeLocal + ':00';
 
+                const payload = {
+                    meeting_url: meetingUrl,
+                    bot_name: botName,
+                    scheduled_time: isoDateTime
+                };
+
+                // Add instructor name if provided
+                if (instructorName) {
+                    payload.instructor_name = instructorName;
+                }
+
                 const response = await apiCall('/api/scheduled-meetings', {
                     method: 'POST',
-                    body: JSON.stringify({
-                        meeting_url: meetingUrl,
-                        bot_name: botName,
-                        scheduled_time: isoDateTime
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 closeScheduleModal();
@@ -1686,6 +1721,12 @@
                 // Update local timezone
                 currentUserTimezone = timezone;
                 updateTimezoneLabel();
+
+                // Update currentUser and localStorage
+                if (currentUser) {
+                    currentUser.timezone = timezone;
+                    localStorage.setItem('auth_user', JSON.stringify(currentUser));
+                }
 
                 // Show success message
                 successEl.style.display = 'block';
