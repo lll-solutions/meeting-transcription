@@ -4,34 +4,39 @@ Flask application that handles meeting bot management and transcription processi
 """
 
 import os
-import time
-import json
 from datetime import datetime
-from urllib.parse import urlparse
-from flask import Flask, request, jsonify, g, render_template, redirect, url_for, send_from_directory
+
 from dotenv import load_dotenv
+from flask import (
+    Flask,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    url_for,
+)
 
 # Load environment variables
 load_dotenv()
 
 # Import API and pipeline modules
 from src.api import recall
-from src.api.storage import MeetingStorage
 from src.api.auth import (
+    get_current_user,
     init_auth,
     require_auth,
-    verify_webhook,
     verify_cloud_tasks,
-    get_current_user
+    verify_webhook,
 )
-from src.pipeline import (
-    combine_transcript_words,
-    create_educational_chunks,
-    summarize_educational_content,
-    create_study_guide,
-    markdown_to_pdf
-)
+from src.api.storage import MeetingStorage
 from src.api.timezone_utils import format_datetime_for_user, utc_now
+from src.services.meeting_service import MeetingService
+from src.services.scheduled_meeting_service import ScheduledMeetingService
+from src.services.transcript_service import TranscriptService
+from src.services.webhook_service import WebhookService
+from src.utils.url_validator import UrlValidator
 
 app = Flask(__name__, static_folder='static')
 
@@ -74,54 +79,9 @@ def format_user_time_filter(dt_str: str, user_timezone: str = "America/New_York"
 # SECURITY CONFIGURATION
 # =============================================================================
 
-# Allowed meeting URL domains (prevent SSRF and abuse)
-ALLOWED_MEETING_DOMAINS = [
-    'zoom.us',
-    'zoomgov.com',
-    'meet.google.com',
-    'teams.microsoft.com',
-    'teams.live.com',
-    'webex.com',
-    'gotomeeting.com',
-    'whereby.com',
-    'around.co',
-]
-
-def validate_meeting_url(url: str) -> tuple[bool, str]:
-    """
-    Validate that a meeting URL is from an allowed domain.
-    
-    Returns:
-        tuple: (is_valid, error_message)
-    """
-    if not url:
-        return False, "Meeting URL is required"
-    
-    try:
-        parsed = urlparse(url)
-        
-        if parsed.scheme not in ('http', 'https'):
-            return False, "Meeting URL must use http or https"
-        
-        domain = parsed.netloc.lower()
-        
-        # Remove port if present
-        if ':' in domain:
-            domain = domain.split(':')[0]
-        
-        # Check against allowed domains (including subdomains)
-        is_allowed = any(
-            domain == allowed or domain.endswith('.' + allowed)
-            for allowed in ALLOWED_MEETING_DOMAINS
-        )
-        
-        if not is_allowed:
-            return False, f"Meeting URL domain not supported. Allowed: {', '.join(ALLOWED_MEETING_DOMAINS)}"
-        
-        return True, ""
-        
-    except Exception as e:
-        return False, f"Invalid URL format: {str(e)}"
+# validate_meeting_url is now handled by UrlValidator from src/utils/url_validator.py
+# Keeping a reference for compatibility with existing code
+validate_meeting_url = UrlValidator.validate_meeting_url
 
 # Configuration
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
@@ -141,8 +101,60 @@ FIREBASE_CONFIG = {
 # Initialize storage (GCS if bucket configured, else local)
 storage = MeetingStorage(bucket_name=OUTPUT_BUCKET, local_dir=OUTPUT_DIR)
 
+# Initialize services
+meeting_service = MeetingService(storage=storage)
+transcript_service = TranscriptService(storage=storage, llm_provider=os.getenv('LLM_PROVIDER', 'vertex_ai'))
 
-def join_meeting_for_scheduler(meeting_url: str, bot_name: str, user: str) -> str:
+
+def process_transcript_callback(transcript_id: str, recording_id: str | None = None) -> None:
+    """Callback for WebhookService to process transcripts."""
+    transcript_service.process_recall_transcript(transcript_id, recording_id)
+
+
+webhook_service = WebhookService(
+    storage=storage,
+    recall_client=recall,
+    process_transcript_callback=process_transcript_callback
+)
+
+# Import dependencies for ScheduledMeetingService
+from src.api.auth_db import get_auth_service
+from src.api.scheduled_meetings import get_scheduled_meeting_storage
+from src.api.timezone_utils import parse_user_datetime
+
+
+# Create simple wrappers for ScheduledMeetingService dependencies
+class SimpleTimezonePaser:
+    """Simple timezone parser wrapper."""
+
+    @staticmethod
+    def parse_user_datetime(datetime_str: str, timezone: str):
+        """Parse user datetime."""
+        return parse_user_datetime(datetime_str, timezone)
+
+
+class SimpleMeetingServiceForScheduler:
+    """Simple wrapper to add join_meeting_for_scheduler method to MeetingService."""
+
+    def __init__(self):
+        pass
+
+    def join_meeting_for_scheduler(self, meeting_url: str, user: str, webhook_url: str, bot_name: str, instructor_name: str | None = None) -> str | None:
+        """Join a meeting (used by ScheduledMeetingService)."""
+        # Will be set after join_meeting_for_scheduler function is defined
+        return join_meeting_for_scheduler(meeting_url, bot_name, user, instructor_name)
+
+
+# Initialize scheduled meeting service (will be completed after join_meeting_for_scheduler is defined)
+scheduled_meeting_service = ScheduledMeetingService(
+    storage=get_scheduled_meeting_storage(),
+    meeting_service=SimpleMeetingServiceForScheduler(),
+    timezone_parser=SimpleTimezonePaser(),
+    auth_service=get_auth_service()
+)
+
+
+def join_meeting_for_scheduler(meeting_url: str, bot_name: str, user: str, instructor_name: str | None = None) -> str | None:
     """
     Helper function for scheduler to join meetings.
 
@@ -161,22 +173,16 @@ def join_meeting_for_scheduler(meeting_url: str, bot_name: str, user: str) -> st
                 print("⚠️ No WEBHOOK_URL or SERVICE_URL configured for scheduled meeting")
                 return None
 
-        # Create bot
-        bot_data = recall.create_bot(meeting_url, webhook_url, bot_name)
-
-        if not bot_data:
-            return None
-
-        # Store meeting in persistent storage
-        meeting_id = bot_data['id']
-        storage.create_meeting(
-            meeting_id=meeting_id,
-            user=user,
+        # Use MeetingService to create and join the meeting
+        meeting = meeting_service.create_meeting(
             meeting_url=meeting_url,
-            bot_name=bot_name
+            user=user,
+            webhook_url=webhook_url,
+            bot_name=bot_name,
+            instructor_name=instructor_name
         )
 
-        return meeting_id
+        return meeting.id
     except Exception as e:
         print(f"Error joining meeting for scheduler: {e}")
         return None
@@ -314,7 +320,7 @@ def login():
         print(f"Login error: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"error": f"Login failed: {str(e)}"}), 500
+        return jsonify({"error": f"Login failed: {e!s}"}), 500
 
 
 @app.route('/api/auth/setup', methods=['POST'])
@@ -369,7 +375,7 @@ def setup_admin():
 @app.route('/ui/meetings-list', methods=['GET'])
 def ui_meetings_list():
     """HTMX partial: Get meeting list HTML."""
-    meetings = storage.list_meetings(user=g.user if g.user != 'anonymous' else None)
+    meetings = meeting_service.list_meetings(user=g.user if g.user != 'anonymous' else None)
     user_timezone = get_user_timezone()
     return render_template('partials/meeting_list.html', meetings=meetings, user_timezone=user_timezone)
 
@@ -395,24 +401,20 @@ def ui_create_meeting():
     if not webhook_url:
         webhook_url = f"{request.url_root.rstrip('/')}/webhook/recall"
 
-    # Create bot
-    bot_data = recall.create_bot(meeting_url, webhook_url, bot_name)
-
-    if not bot_data:
+    # Use MeetingService to create and join the meeting
+    try:
+        _meeting = meeting_service.create_meeting(
+            meeting_url=meeting_url,
+            user=g.user,
+            webhook_url=webhook_url,
+            bot_name=bot_name,
+            instructor_name=instructor_name
+        )
+    except Exception:
         return '<div class="text-accent-coral p-4">Failed to create bot</div>', 500
 
-    # Store meeting
-    meeting_id = bot_data['id']
-    storage.create_meeting(
-        meeting_id=meeting_id,
-        user=g.user,
-        meeting_url=meeting_url,
-        bot_name=bot_name,
-        instructor_name=instructor_name
-    )
-    
     # Return updated meeting list
-    meetings = storage.list_meetings(user=g.user if g.user != 'anonymous' else None)
+    meetings = meeting_service.list_meetings(user=g.user if g.user != 'anonymous' else None)
     user_timezone = get_user_timezone()
     return render_template('partials/meeting_list.html', meetings=meetings, user_timezone=user_timezone)
 
@@ -420,15 +422,10 @@ def ui_create_meeting():
 @app.route('/ui/meetings/<meeting_id>', methods=['GET'])
 def ui_meeting_detail(meeting_id):
     """UI: Meeting detail page."""
-    meeting = storage.get_meeting(meeting_id)
+    meeting = meeting_service.get_meeting(meeting_id)
 
     if not meeting:
-        # Try from Recall API
-        bot_status = recall.get_bot_status(meeting_id)
-        if bot_status:
-            meeting = bot_status
-        else:
-            return redirect(url_for('index'))
+        return redirect(url_for('index'))
 
     user_timezone = get_user_timezone()
     return render_template('meeting_detail.html', meeting=meeting, user=g.user, user_timezone=user_timezone)
@@ -437,12 +434,10 @@ def ui_meeting_detail(meeting_id):
 @app.route('/ui/meetings/<meeting_id>', methods=['DELETE'])
 def ui_delete_meeting(meeting_id):
     """HTMX: Remove bot from meeting and return updated list."""
-    success = recall.leave_meeting(meeting_id)
-    if success:
-        storage.update_meeting(meeting_id, {"status": "leaving"})
-    
+    _success = meeting_service.leave_meeting(meeting_id)
+
     # Return updated meeting list
-    meetings = storage.list_meetings(user=g.user if g.user != 'anonymous' else None)
+    meetings = meeting_service.list_meetings(user=g.user if g.user != 'anonymous' else None)
     user_timezone = get_user_timezone()
     return render_template('partials/meeting_list.html', meetings=meetings, user_timezone=user_timezone)
 
@@ -518,10 +513,6 @@ def create_scheduled_meeting():
         "instructor_name": "Instructor Name" (optional)
     }
     """
-    from src.api.scheduled_meetings import ScheduledMeeting, get_scheduled_meeting_storage
-    from src.api.timezone_utils import parse_user_datetime
-    from src.api.auth_db import get_auth_service
-
     # Check if bot joining feature is enabled
     if not FEATURES_BOT_JOINING:
         return jsonify({
@@ -539,39 +530,25 @@ def create_scheduled_meeting():
     bot_name = data.get('bot_name') or get_default_bot_name()
     instructor_name = data.get('instructor_name')
 
-    # Validate meeting URL
-    is_valid, error = validate_meeting_url(meeting_url)
-    if not is_valid:
-        return jsonify({"error": error}), 400
-
     # Get user's timezone
-    auth_service = get_auth_service()
-    user = auth_service.get_user(g.user)
-    if not user:
+    user_obj = get_auth_service().get_user(g.user)
+    if not user_obj:
         return jsonify({"error": "User not found"}), 404
 
-    user_timezone = user.timezone
+    user_timezone = user_obj.timezone
 
-    # Parse scheduled time (convert from user's timezone to UTC)
-    scheduled_time_utc = parse_user_datetime(data['scheduled_time'], user_timezone)
-    if not scheduled_time_utc:
-        return jsonify({"error": "Invalid scheduled_time format. Use ISO format like '2024-12-10T15:30:00'"}), 400
-
-    # Create scheduled meeting
-    scheduled_meeting = ScheduledMeeting(
+    # Use ScheduledMeetingService to create the scheduled meeting
+    created_meeting, error = scheduled_meeting_service.create_scheduled_meeting(
         meeting_url=meeting_url,
-        scheduled_time=scheduled_time_utc,
+        scheduled_time_str=data['scheduled_time'],
         user=g.user,
-        bot_name=bot_name,
         user_timezone=user_timezone,
+        bot_name=bot_name,
         instructor_name=instructor_name
     )
 
-    storage_service = get_scheduled_meeting_storage()
-    created_meeting, error = storage_service.create(scheduled_meeting)
-
     if error:
-        return jsonify({"error": error}), 500
+        return jsonify({"error": error}), 400 if "not supported" in error or "required" in error or "Invalid" in error else 500
 
     return jsonify(created_meeting.to_dict()), 201
 
@@ -580,13 +557,11 @@ def create_scheduled_meeting():
 @require_auth
 def list_scheduled_meetings():
     """List scheduled meetings for the current user."""
-    from src.api.scheduled_meetings import get_scheduled_meeting_storage
-
-    storage_service = get_scheduled_meeting_storage()
     user = g.user if g.user != 'anonymous' else None
-
     status = request.args.get('status')
-    meetings = storage_service.list(user=user, status=status)
+
+    # Use ScheduledMeetingService to list meetings
+    meetings = scheduled_meeting_service.list_scheduled_meetings(user=user, status=status)
 
     return jsonify([m.to_dict() for m in meetings])
 
@@ -595,10 +570,7 @@ def list_scheduled_meetings():
 @require_auth
 def get_scheduled_meeting(meeting_id):
     """Get a scheduled meeting by ID."""
-    from src.api.scheduled_meetings import get_scheduled_meeting_storage
-
-    storage_service = get_scheduled_meeting_storage()
-    meeting = storage_service.get(meeting_id)
+    meeting = scheduled_meeting_service.get_scheduled_meeting(meeting_id)
 
     if not meeting:
         return jsonify({"error": "Scheduled meeting not found"}), 404
@@ -614,10 +586,7 @@ def get_scheduled_meeting(meeting_id):
 @require_auth
 def delete_scheduled_meeting(meeting_id):
     """Cancel a scheduled meeting."""
-    from src.api.scheduled_meetings import get_scheduled_meeting_storage
-
-    storage_service = get_scheduled_meeting_storage()
-    meeting = storage_service.get(meeting_id)
+    meeting = scheduled_meeting_service.get_scheduled_meeting(meeting_id)
 
     if not meeting:
         return jsonify({"error": "Scheduled meeting not found"}), 404
@@ -626,7 +595,7 @@ def delete_scheduled_meeting(meeting_id):
     if meeting.user != g.user and g.user != 'anonymous':
         return jsonify({"error": "Forbidden"}), 403
 
-    success, error = storage_service.delete(meeting_id)
+    success, error = scheduled_meeting_service.delete_scheduled_meeting(meeting_id)
 
     if error:
         return jsonify({"error": error}), 500
@@ -644,9 +613,6 @@ def execute_scheduled_meetings():
 
     Authentication: Verifies request is from Cloud Scheduler via OIDC token.
     """
-    from src.api.scheduled_meetings import get_scheduled_meeting_storage
-    from src.api.timezone_utils import utc_now
-
     # Verify request is from Cloud Scheduler
     # Cloud Scheduler adds Authorization: Bearer <OIDC token> header
     auth_header = request.headers.get('Authorization', '')
@@ -658,84 +624,10 @@ def execute_scheduled_meetings():
     # For now, we'll accept any Bearer token (Cloud Scheduler will provide valid OIDC)
     # TODO: Add proper OIDC token verification if needed
 
-    storage_service = get_scheduled_meeting_storage()
-    now = utc_now()
-    pending_meetings = storage_service.get_pending(before_time=now)
+    # Use ScheduledMeetingService to execute pending meetings
+    result = scheduled_meeting_service.execute_pending_meetings()
 
-    if not pending_meetings:
-        return jsonify({
-            "message": "No pending meetings to execute",
-            "checked_at": now.isoformat(),
-            "executed": 0
-        })
-
-    print(f"⏰ Cloud Scheduler: Found {len(pending_meetings)} pending meeting(s) to execute")
-
-    results = []
-    for scheduled_meeting in pending_meetings:
-        try:
-            print(f"🤖 Executing scheduled meeting: {scheduled_meeting.id}")
-            print(f"   URL: {scheduled_meeting.meeting_url}")
-            print(f"   Scheduled for: {scheduled_meeting.scheduled_time}")
-            print(f"   User: {scheduled_meeting.user}")
-
-            # Join the meeting
-            meeting_id = join_meeting_for_scheduler(
-                scheduled_meeting.meeting_url,
-                scheduled_meeting.bot_name,
-                scheduled_meeting.user
-            )
-
-            if meeting_id:
-                # Update as completed
-                storage_service.update(scheduled_meeting.id, {
-                    "status": "completed",
-                    "actual_meeting_id": meeting_id
-                })
-                results.append({
-                    "id": scheduled_meeting.id,
-                    "status": "completed",
-                    "meeting_id": meeting_id
-                })
-                print(f"✅ Successfully joined meeting: {meeting_id}")
-            else:
-                # Mark as failed
-                storage_service.update(scheduled_meeting.id, {
-                    "status": "failed",
-                    "error": "Failed to create bot"
-                })
-                results.append({
-                    "id": scheduled_meeting.id,
-                    "status": "failed",
-                    "error": "Failed to create bot"
-                })
-                print(f"❌ Failed to join scheduled meeting: {scheduled_meeting.id}")
-
-        except Exception as e:
-            error_msg = str(e)
-            print(f"❌ Error executing scheduled meeting {scheduled_meeting.id}: {error_msg}")
-
-            # Mark as failed
-            try:
-                storage_service.update(scheduled_meeting.id, {
-                    "status": "failed",
-                    "error": error_msg
-                })
-            except Exception as update_error:
-                print(f"❌ Could not update meeting status: {update_error}")
-
-            results.append({
-                "id": scheduled_meeting.id,
-                "status": "failed",
-                "error": error_msg
-            })
-
-    return jsonify({
-        "message": f"Executed {len(results)} scheduled meeting(s)",
-        "checked_at": now.isoformat(),
-        "executed": len(results),
-        "results": results
-    })
+    return jsonify(result)
 
 
 # =============================================================================
@@ -784,23 +676,20 @@ def create_meeting():
         # Try to construct from request
         webhook_url = f"{request.url_root.rstrip('/')}/webhook/recall"
 
-    # Create bot
-    bot_data = recall.create_bot(meeting_url, webhook_url, bot_name)
+    # Use MeetingService to create and join the meeting
+    try:
+        meeting = meeting_service.create_meeting(
+            meeting_url=meeting_url,
+            user=g.user,
+            webhook_url=webhook_url,
+            bot_name=bot_name,
+            instructor_name=instructor_name
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    if not bot_data:
-        return jsonify({"error": "Failed to create bot"}), 500
-
-    # Store meeting in persistent storage
-    meeting_id = bot_data['id']
-    meeting = storage.create_meeting(
-        meeting_id=meeting_id,
-        user=g.user,
-        meeting_url=meeting_url,
-        bot_name=bot_name,
-        instructor_name=instructor_name
-    )
-
-    return jsonify(meeting), 201
+    # Return the created meeting as dict
+    return jsonify(meeting.to_dict()), 201
 
 
 @app.route('/api/meetings', methods=['GET'])
@@ -808,7 +697,7 @@ def create_meeting():
 def list_meetings():
     """List meetings for the current user."""
     user = g.user if g.user != 'anonymous' else None
-    meetings = storage.list_meetings(user=user)
+    meetings = meeting_service.list_meetings(user=user)
     return jsonify(meetings)
 
 
@@ -816,13 +705,9 @@ def list_meetings():
 @require_auth
 def get_meeting(meeting_id):
     """Get status of a specific meeting."""
-    meeting = storage.get_meeting(meeting_id)
+    meeting = meeting_service.get_meeting(meeting_id)
 
     if not meeting:
-        # Try to get from Recall API as fallback
-        bot_status = recall.get_bot_status(meeting_id)
-        if bot_status:
-            return jsonify(bot_status)
         return jsonify({"error": "Meeting not found"}), 404
 
     return jsonify(meeting)
@@ -832,9 +717,8 @@ def get_meeting(meeting_id):
 @require_auth
 def remove_meeting(meeting_id):
     """Remove bot from meeting."""
-    success = recall.leave_meeting(meeting_id)
+    success = meeting_service.leave_meeting(meeting_id)
     if success:
-        storage.update_meeting(meeting_id, {"status": "leaving"})
         return jsonify({"status": "leaving"})
     return jsonify({"error": "Failed to remove bot"}), 500
 
@@ -853,154 +737,15 @@ def handle_webhook():
     """
     try:
         data = request.json
-        event = data.get('event')
-        
-        print(f"\n📨 Received event: {event}")
-        
-        # Handle bot joining call
-        if event == 'bot.joining_call':
-            bot_id = data.get('data', {}).get('bot', {}).get('id') or data.get('bot_id')
-            print(f"👋 Bot joining the call! ID: {bot_id}")
-            if bot_id:
-                storage.update_meeting(bot_id, {"status": "in_meeting"})
 
-        # Handle bot done / meeting ended
-        elif event in ['bot.done', 'bot.call_ended']:
-            bot_id = data.get('data', {}).get('bot', {}).get('id') or data.get('bot_id')
-            recording_id = (
-                data.get('data', {}).get('recording', {}).get('id') or
-                data.get('data', {}).get('recording_id')
-            )
-            
-            print(f"👋 Bot left the call. Recording ID: {recording_id}")
-            
-            # Update meeting in storage
-            if bot_id:
-                storage.update_meeting(bot_id, {
-                    "status": "ended",
-                    "recording_id": recording_id
-                })
-            
-            # Request async transcript
-            if recording_id:
-                print(f"📝 Requesting async transcript for recording {recording_id}")
-                time.sleep(5)  # Wait for recording to finalize
-                transcript_result = recall.create_async_transcript(recording_id)
-                if transcript_result and bot_id:
-                    storage.update_meeting(bot_id, {
-                        "transcript_id": transcript_result['id'],
-                        "status": "transcribing"
-                    })
-        
-        # Handle recording completion
-        elif event == 'recording.done':
-            recording_id = data.get('data', {}).get('recording', {}).get('id')
-            bot_id = data.get('data', {}).get('bot', {}).get('id')
-            print(f"🎬 Recording completed! ID: {recording_id}, Bot ID: {bot_id}")
+        # Determine service URL for Cloud Tasks
+        service_url = os.getenv("SERVICE_URL") or request.host_url.rstrip('/')
 
-            # Update meeting with recording_id so we can find it later
-            if bot_id and recording_id:
-                try:
-                    storage.update_meeting(bot_id, {"recording_id": recording_id})
-                    print(f"✅ Updated meeting {bot_id} with recording_id {recording_id}")
-                except Exception as e:
-                    print(f"⚠️ Could not update meeting with recording_id: {e}")
+        # Use WebhookService to handle the event
+        webhook_service.handle_event(data, service_url)
 
-            if recording_id:
-                print(f"📝 Requesting async transcript for recording {recording_id}")
-                time.sleep(5)
-                transcript_result = recall.create_async_transcript(recording_id)
-
-                # Update meeting with transcript_id
-                if bot_id and transcript_result:
-                    try:
-                        storage.update_meeting(bot_id, {
-                            "transcript_id": transcript_result['id'],
-                            "status": "transcribing"
-                        })
-                        print(f"✅ Updated meeting {bot_id} with transcript_id {transcript_result['id']}")
-                    except Exception as e:
-                        print(f"⚠️ Could not update meeting with transcript_id: {e}")
-        
-        # Handle transcript completion - TRIGGER THE PIPELINE
-        elif event == 'transcript.done':
-            transcript_id = data.get('data', {}).get('transcript', {}).get('id')
-            recording_id = data.get('data', {}).get('recording', {}).get('id')
-
-            print(f"✅ Transcript ready! ID: {transcript_id}, Recording ID: {recording_id}")
-
-            if transcript_id:
-                # Find the meeting ID for this transcript
-                meeting_id = None
-                meetings_list = storage.list_meetings()
-                for m in meetings_list:
-                    # Try matching by transcript_id first, then recording_id
-                    if m.get('transcript_id') == transcript_id or m.get('recording_id') == recording_id:
-                        meeting_id = m['id']
-                        print(f"✅ Found meeting {meeting_id} for transcript {transcript_id}")
-                        break
-
-                if not meeting_id:
-                    print(f"⚠️ No meeting found for transcript {transcript_id} / recording {recording_id}")
-                    print(f"   Using recording_id as meeting_id (fallback)")
-                    meeting_id = recording_id or transcript_id
-
-                # Queue processing via Cloud Tasks (async, won't block webhook)
-                try:
-                    from google.cloud import tasks_v2
-                    import json as json_lib
-
-                    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-                    location = os.getenv("GCP_REGION", "us-central1")
-                    queue = "transcript-processing"
-
-                    service_url = os.getenv("SERVICE_URL") or request.host_url.rstrip('/')
-                    url = f"{service_url}/api/transcripts/process-recall/{meeting_id}"
-
-                    client = tasks_v2.CloudTasksClient()
-                    parent = client.queue_path(project_id, location, queue)
-
-                    payload = {
-                        "transcript_id": transcript_id,
-                        "recording_id": recording_id
-                    }
-
-                    task = {
-                        "http_request": {
-                            "http_method": tasks_v2.HttpMethod.POST,
-                            "url": url,
-                            "headers": {"Content-Type": "application/json"},
-                            "body": json_lib.dumps(payload).encode(),
-                            "oidc_token": {
-                                "service_account_email": f"{os.getenv('PROJECT_NUMBER', '')}-compute@developer.gserviceaccount.com"
-                            }
-                        }
-                    }
-
-                    response = client.create_task(request={"parent": parent, "task": task})
-                    print(f"✅ Cloud Task created for transcript processing: {response.name}")
-
-                    # Update status to queued
-                    storage.update_meeting(meeting_id, {"status": "queued"})
-
-                except Exception as e:
-                    print(f"❌ Failed to create Cloud Task for transcript: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Fall back to synchronous processing if Cloud Tasks fails
-                    print(f"⚠️ Falling back to synchronous processing")
-                    process_transcript(transcript_id, recording_id)
-        
-        # Handle transcript failure
-        elif event == 'transcript.failed':
-            print(f"❌ Transcript failed")
-            print(data)
-        
-        else:
-            print(f"ℹ️ Unhandled event: {event}")
-        
         return jsonify({"status": "ok"}), 200
-        
+
     except Exception as e:
         print(f"❌ Error handling webhook: {e}")
         import traceback
@@ -1008,172 +753,28 @@ def handle_webhook():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-def process_transcript(transcript_id: str, recording_id: str = None):
-    """
-    Process transcript through the summarization pipeline.
-    
-    Steps:
-    1. Download transcript
-    2. Combine words into sentences
-    3. Create educational chunks
-    4. Summarize with LLM
-    5. Generate study guide (Markdown)
-    6. Convert to PDF
-    7. Upload to storage
-    """
-    # Find the meeting ID associated with this transcript
-    meeting_id = None
-    meeting_record = None
-    meetings_list = storage.list_meetings()
-    for m in meetings_list:
-        if m.get('transcript_id') == transcript_id:
-            meeting_id = m['id']
-            meeting_record = m
-            break
-
-    if not meeting_id:
-        meeting_id = recording_id or transcript_id
-    
-    try:
-        print(f"\n🔄 Starting pipeline for transcript {transcript_id}")
-        
-        # Update status
-        storage.update_meeting(meeting_id, {"status": "processing"})
-        
-        # Create temporary local directory for processing
-        import tempfile
-        with tempfile.TemporaryDirectory() as temp_dir:
-            
-            # Step 1: Download transcript
-            print("📥 Step 1: Downloading transcript...")
-            transcript_file = os.path.join(temp_dir, "transcript_raw.json")
-            result = recall.download_transcript(transcript_id, transcript_file)
-            if not result:
-                print("❌ Failed to download transcript")
-                storage.update_meeting(meeting_id, {
-                    "status": "failed",
-                    "error": "Failed to download transcript"
-                })
-                return
-            
-            # Step 2: Combine words
-            print("📝 Step 2: Combining words into sentences...")
-            combined_file = os.path.join(temp_dir, "transcript_combined.json")
-            combine_transcript_words.combine_transcript_words(transcript_file, combined_file)
-            
-            # Step 3: Create chunks
-            print("📦 Step 3: Creating educational chunks...")
-            chunks_file = os.path.join(temp_dir, "transcript_chunks.json")
-            create_educational_chunks.create_educational_content_chunks(combined_file, chunks_file, chunk_minutes=10)
-            
-            # Step 4: LLM Summarization
-            print("🤖 Step 4: Generating AI summary...")
-            summary_file = os.path.join(temp_dir, "summary.json")
-            summarize_educational_content.summarize_educational_content(
-                chunks_file, 
-                summary_file,
-                provider=os.getenv('LLM_PROVIDER', 'vertex_ai')
-            )
-            
-            # Step 4.5: Patch summary with meeting metadata
-            if meeting_record:
-                import json
-                with open(summary_file, 'r') as f:
-                    summary_data = json.load(f)
-
-                # Update metadata from meeting record
-                if 'metadata' not in summary_data:
-                    summary_data['metadata'] = {}
-
-                if meeting_record.get('created_at'):
-                    summary_data['metadata']['meeting_date'] = meeting_record['created_at'][:10]
-
-                if meeting_record.get('instructor_name'):
-                    summary_data['metadata']['instructor'] = meeting_record['instructor_name']
-
-                # Write back
-                with open(summary_file, 'w') as f:
-                    json.dump(summary_data, f, indent=2)
-
-            # Step 5: Create study guide
-            print("📚 Step 5: Creating study guide...")
-            study_guide_file = os.path.join(temp_dir, "study_guide.md")
-            create_study_guide.create_markdown_study_guide(summary_file, study_guide_file)
-            
-            # Step 6: Convert to PDF
-            print("📄 Step 6: Generating PDF...")
-            pdf_file = os.path.join(temp_dir, "study_guide.pdf")
-            try:
-                markdown_to_pdf.convert_markdown_to_pdf(study_guide_file, pdf_file)
-            except Exception as e:
-                print(f"⚠️ PDF generation failed (non-fatal): {e}")
-                pdf_file = None
-
-            # Step 7: Upload all files to storage
-            print("☁️ Step 7: Uploading to storage...")
-            outputs = {}
-
-            files_to_upload = [
-                ("transcript", transcript_file),
-                ("summary", summary_file),
-                ("study_guide_md", study_guide_file),
-            ]
-
-            if pdf_file and os.path.exists(pdf_file):
-                files_to_upload.append(("study_guide_pdf", pdf_file))
-
-            for name, local_path in files_to_upload:
-                filename = os.path.basename(local_path)
-                stored_path = storage.save_file_from_path(meeting_id, filename, local_path)
-                outputs[name] = stored_path
-                print(f"   ✅ Uploaded: {filename}")
-            
-            # Update meeting with completed status and output paths
-            storage.update_meeting(meeting_id, {
-                "status": "completed",
-                "outputs": outputs,
-                "completed_at": utc_now().isoformat()
-            })
-            
-            print(f"\n✅ Pipeline complete!")
-            print(f"   Meeting ID: {meeting_id}")
-            for name, path in outputs.items():
-                print(f"   - {name}: {path}")
-        
-    except Exception as e:
-        print(f"❌ Pipeline error: {e}")
-        import traceback
-        traceback.print_exc()
-        
-        # Update meeting with error
-        storage.update_meeting(meeting_id, {
-            "status": "failed",
-            "error": str(e)
-        })
-
-
 @app.route('/api/meetings/<meeting_id>/outputs', methods=['GET'])
 @require_auth
 def get_meeting_outputs(meeting_id):
     """Get the output files for a completed meeting."""
-    meeting = storage.get_meeting(meeting_id)
-    
+    meeting = meeting_service.get_meeting(meeting_id)
+
     if not meeting:
         return jsonify({"error": "Meeting not found"}), 404
-    
+
     if meeting['status'] != 'completed':
         return jsonify({
             "status": meeting['status'],
             "message": "Meeting not yet completed or still processing"
         })
-    
+
     # Get download URLs for outputs
     outputs = {}
     for name, path in meeting.get('outputs', {}).items():
         filename = os.path.basename(path)
         url = storage.get_download_url(meeting_id, filename)
         outputs[name] = url
-    
+
     return jsonify(outputs)
 
 
@@ -1186,7 +787,7 @@ def download_output(meeting_id, filename):
     No auth required - meeting IDs are UUIDs (hard to guess).
     """
     # Check if meeting exists
-    meeting = storage.get_meeting(meeting_id)
+    meeting = meeting_service.get_meeting(meeting_id)
     if not meeting:
         return jsonify({"error": "Meeting not found"}), 404
 
@@ -1227,109 +828,35 @@ def upload_transcript():
         "title": "Meeting Title"  // Optional title
     }
     """
-    import uuid
-    import json as json_lib
-    from google.cloud import tasks_v2
-
     data = request.json
 
     if not data or 'transcript' not in data:
         return jsonify({"error": "transcript data is required"}), 400
 
     transcript_data = data['transcript']
-    title = data.get('title', f'Uploaded Transcript {utc_now().strftime("%Y-%m-%d %H:%M")}')
+    title = data.get('title')
 
-    # Validate transcript format
-    if not isinstance(transcript_data, list):
-        return jsonify({"error": "Invalid transcript format - expected array"}), 400
+    # Get service URL for Cloud Tasks callback
+    service_url = os.getenv("SERVICE_URL") or request.host_url.rstrip('/')
 
-    if len(transcript_data) == 0:
-        return jsonify({"error": "Transcript is empty"}), 400
-
-    # Generate a unique meeting ID for this upload
-    meeting_id = f"upload-{uuid.uuid4().hex[:8]}"
-
-    # Create meeting record with initial status
-    meeting = storage.create_meeting(
-        meeting_id=meeting_id,
-        user=g.user,
-        meeting_url=None,
-        bot_name=title
-    )
-    storage.update_meeting(meeting_id, {"status": "queued"})
-
-    # Store transcript temporarily in GCS (Cloud Tasks has 100KB payload limit)
+    # Use TranscriptService to queue the upload
     try:
-        bucket_name = os.getenv("OUTPUT_BUCKET")
-        blob_name = f"temp/{meeting_id}/transcript_upload.json"
-
-        from google.cloud import storage as gcs_storage
-        gcs_client = gcs_storage.Client()
-        bucket = gcs_client.bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-        blob.upload_from_string(json_lib.dumps(transcript_data), content_type='application/json')
-
-        print(f"✅ Transcript stored temporarily: gs://{bucket_name}/{blob_name}")
-    except Exception as e:
-        print(f"❌ Failed to store transcript: {e}")
-        storage.update_meeting(meeting_id, {
-            "status": "failed",
-            "error": f"Failed to store transcript: {str(e)}"
-        })
-        return jsonify({"error": f"Failed to store transcript: {str(e)}"}), 500
-
-    # Create Cloud Task for background processing
-    try:
-        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        location = os.getenv("GCP_REGION", "us-central1")
-        queue = "transcript-processing"
-
-        # Get the service URL
-        service_url = os.getenv("SERVICE_URL") or request.host_url.rstrip('/')
-        url = f"{service_url}/api/transcripts/process/{meeting_id}"
-
-        # Create Cloud Tasks client
-        client = tasks_v2.CloudTasksClient()
-        parent = client.queue_path(project_id, location, queue)
-
-        # Prepare task payload (only metadata, not transcript)
-        payload = {
-            "meeting_id": meeting_id,
-            "title": title
-        }
-
-        # Create the task
-        task = {
-            "http_request": {
-                "http_method": tasks_v2.HttpMethod.POST,
-                "url": url,
-                "headers": {"Content-Type": "application/json"},
-                "body": json_lib.dumps(payload).encode(),
-                "oidc_token": {
-                    "service_account_email": f"{os.getenv('PROJECT_NUMBER', '')}-compute@developer.gserviceaccount.com"
-                }
-            }
-        }
-
-        # Enqueue the task
-        response = client.create_task(request={"parent": parent, "task": task})
-        print(f"✅ Cloud Task created: {response.name}")
-
-    except Exception as e:
-        print(f"❌ Failed to create Cloud Task: {e}")
-        import traceback
-        traceback.print_exc()
-        storage.update_meeting(meeting_id, {
-            "status": "failed",
-            "error": f"Failed to queue processing: {str(e)}"
-        })
-        return jsonify({"error": f"Failed to queue processing: {str(e)}"}), 500
+        meeting_id, used_title = transcript_service.queue_uploaded_transcript(
+            user=g.user,
+            transcript_data=transcript_data,
+            title=title,
+            service_url=service_url
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 500
 
     # Return immediately with meeting_id for polling
     return jsonify({
         "status": "queued",
         "meeting_id": meeting_id,
-        "title": title,
+        "title": used_title,
         "message": "Processing queued. Poll /api/meetings/{meeting_id} for status."
     }), 202
 
@@ -1343,65 +870,25 @@ def process_transcript_task(meeting_id: str):
 
     This endpoint is called by Cloud Tasks, not directly by users.
     """
-    import json as json_lib
-
     print(f"📥 Cloud Task received for {meeting_id}", flush=True)
-
-    # Get the meeting to retrieve metadata
-    meeting = storage.get_meeting(meeting_id)
-    if not meeting:
-        print(f"❌ Meeting {meeting_id} not found", flush=True)
-        return jsonify({"error": "Meeting not found"}), 404
 
     # Get metadata from request body
     data = request.json or {}
-    title = data.get('title', meeting.get('bot_name', 'Uploaded Transcript'))
+    title = data.get('title')
 
-    # Fetch transcript from GCS temp storage
+    # Use TranscriptService to fetch from GCS and process
     try:
-        bucket_name = os.getenv("OUTPUT_BUCKET")
-        blob_name = f"temp/{meeting_id}/transcript_upload.json"
-
-        from google.cloud import storage as gcs_storage
-        gcs_client = gcs_storage.Client()
-        bucket = gcs_client.bucket(bucket_name)
-        blob = bucket.blob(blob_name)
-
-        transcript_json = blob.download_as_text()
-        transcript_data = json_lib.loads(transcript_json)
-
-        print(f"✅ Transcript fetched from GCS: {len(transcript_data)} segments")
-    except Exception as e:
-        print(f"❌ Failed to fetch transcript from GCS: {e}")
-        storage.update_meeting(meeting_id, {
-            "status": "failed",
-            "error": f"Failed to fetch transcript: {str(e)}"
-        })
-        return jsonify({"error": f"Failed to fetch transcript: {str(e)}"}), 500
-
-    print(f"🔄 Starting processing for {meeting_id}", flush=True)
-
-    # Process the transcript (this will run until completion)
-    try:
-        process_uploaded_transcript(meeting_id, transcript_data, title)
+        transcript_service.fetch_and_process_uploaded(meeting_id, title)
         print(f"✅ Processing completed for {meeting_id}", flush=True)
-
-        # Clean up temp file
-        try:
-            blob.delete()
-            print(f"🗑️ Temp transcript deleted")
-        except:
-            pass
-
         return jsonify({"status": "completed", "meeting_id": meeting_id}), 200
+    except ValueError as e:
+        # Meeting not found or data issues
+        print(f"❌ Processing failed for {meeting_id}: {e}", flush=True)
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         print(f"❌ Processing failed for {meeting_id}: {e}", flush=True)
         import traceback
         traceback.print_exc()
-        storage.update_meeting(meeting_id, {
-            "status": "failed",
-            "error": str(e)
-        })
         return jsonify({"status": "failed", "error": str(e)}), 500
 
 
@@ -1414,8 +901,6 @@ def process_recall_transcript_task(meeting_id: str):
 
     This endpoint is called by Cloud Tasks, not directly by users.
     """
-    import json as json_lib
-
     print(f"📥 Cloud Task received for Recall transcript {meeting_id}", flush=True)
 
     # Get metadata from request body
@@ -1424,21 +909,20 @@ def process_recall_transcript_task(meeting_id: str):
     recording_id = data.get('recording_id')
 
     if not transcript_id:
-        print(f"❌ No transcript_id provided", flush=True)
+        print("❌ No transcript_id provided", flush=True)
         return jsonify({"error": "transcript_id is required"}), 400
 
     print(f"🔄 Processing Recall transcript {transcript_id}", flush=True)
 
-    # Process the transcript (this will run until completion)
+    # Use TranscriptService to process the transcript
     try:
-        process_transcript(transcript_id, recording_id)
+        transcript_service.process_recall_transcript(transcript_id, recording_id)
         print(f"✅ Recall transcript processing completed for {meeting_id}", flush=True)
         return jsonify({"status": "completed", "meeting_id": meeting_id}), 200
     except Exception as e:
         print(f"❌ Recall transcript processing failed for {meeting_id}: {e}", flush=True)
         import traceback
         traceback.print_exc()
-        # Note: process_transcript handles its own error status updates
         return jsonify({"status": "failed", "error": str(e)}), 500
 
 
@@ -1452,181 +936,34 @@ def reprocess_meeting(meeting_id: str):
 
     Requires authentication - call with Bearer token or API key.
     """
-    import json as json_lib
-
     print(f"🔄 Reprocess request for meeting {meeting_id}", flush=True)
 
-    # Get the meeting
-    meeting = storage.get_meeting(meeting_id)
-    if not meeting:
-        return jsonify({"error": "Meeting not found"}), 404
-
-    # Check if this is a Recall transcript or uploaded transcript
-    transcript_id = meeting.get('transcript_id')
-    recording_id = meeting.get('recording_id')
-
+    # Use TranscriptService to reprocess (handles both Recall and uploaded transcripts)
     try:
-        if transcript_id:
-            # This is a Recall transcript
-            print(f"🔄 Reprocessing Recall transcript {transcript_id}", flush=True)
-            process_transcript(transcript_id, recording_id)
-            return jsonify({
-                "status": "completed",
-                "meeting_id": meeting_id,
-                "type": "recall"
-            }), 200
-        else:
-            # This is an uploaded transcript - fetch from GCS temp or original upload
-            bucket_name = os.getenv("OUTPUT_BUCKET")
-
-            # Try temp location first (from recent upload)
-            blob_name = f"temp/{meeting_id}/transcript_upload.json"
-
-            from google.cloud import storage as gcs_storage
-            gcs_client = gcs_storage.Client()
-            bucket = gcs_client.bucket(bucket_name)
-            blob = bucket.blob(blob_name)
-
-            # If temp doesn't exist, try to get from outputs
-            if not blob.exists():
-                # Check if meeting has transcript_raw output
-                outputs = meeting.get('outputs', {})
-                if 'transcript_raw' in outputs:
-                    # Download from the stored location
-                    raw_path = outputs['transcript_raw']
-                    blob_name = raw_path.replace(f"gs://{bucket_name}/", "")
-                    blob = bucket.blob(blob_name)
-                else:
-                    return jsonify({
-                        "error": "No transcript data found for this meeting"
-                    }), 404
-
-            transcript_json = blob.download_as_text()
-            transcript_data = json_lib.loads(transcript_json)
-            title = meeting.get('title') or meeting.get('bot_name', 'Uploaded Transcript')
-
-            print(f"🔄 Reprocessing uploaded transcript: {len(transcript_data)} segments", flush=True)
-            process_uploaded_transcript(meeting_id, transcript_data, title)
-
-            return jsonify({
-                "status": "completed",
-                "meeting_id": meeting_id,
-                "type": "uploaded"
-            }), 200
-
+        transcript_type = transcript_service.reprocess_transcript(meeting_id)
+        print(f"✅ Reprocessing completed for {meeting_id}", flush=True)
+        return jsonify({
+            "status": "completed",
+            "meeting_id": meeting_id,
+            "type": transcript_type
+        }), 200
+    except ValueError as e:
+        # Meeting not found or no transcript data
+        print(f"❌ Reprocessing failed for {meeting_id}: {e}", flush=True)
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         print(f"❌ Reprocessing failed for {meeting_id}: {e}", flush=True)
         import traceback
         traceback.print_exc()
-        storage.update_meeting(meeting_id, {
-            "status": "failed",
-            "error": f"Reprocessing failed: {str(e)}"
-        })
         return jsonify({"status": "failed", "error": str(e)}), 500
-
-
-def process_uploaded_transcript(meeting_id: str, transcript_data: list, title: str = None) -> dict:
-    """
-    Process an uploaded transcript through the summarization pipeline.
-    
-    Args:
-        meeting_id: Unique ID for this upload
-        transcript_data: The transcript JSON data (list of segments)
-        title: Optional title for the transcript
-    
-    Returns:
-        dict: Processing results including output paths
-    """
-    import tempfile
-    
-    print(f"\n🔄 Starting pipeline for uploaded transcript {meeting_id}")
-    storage.update_meeting(meeting_id, {"status": "processing"})
-    
-    with tempfile.TemporaryDirectory() as temp_dir:
-        
-        # Step 1: Save the uploaded transcript
-        print("📥 Step 1: Saving uploaded transcript...")
-        transcript_file = os.path.join(temp_dir, "transcript_raw.json")
-        with open(transcript_file, 'w') as f:
-            json.dump(transcript_data, f, indent=2)
-        
-        # Step 2: Combine words
-        print("📝 Step 2: Combining words into sentences...")
-        combined_file = os.path.join(temp_dir, "transcript_combined.json")
-        combine_transcript_words.combine_transcript_words(transcript_file, combined_file)
-        
-        # Step 3: Create chunks
-        print("📦 Step 3: Creating educational chunks...")
-        chunks_file = os.path.join(temp_dir, "transcript_chunks.json")
-        create_educational_chunks.create_educational_content_chunks(combined_file, chunks_file, chunk_minutes=10)
-        
-        # Step 4: LLM Summarization
-        print("🤖 Step 4: Generating AI summary...")
-        summary_file = os.path.join(temp_dir, "summary.json")
-        summarize_educational_content.summarize_educational_content(
-            chunks_file, 
-            summary_file,
-            provider=os.getenv('LLM_PROVIDER', 'vertex_ai')
-        )
-        
-        # Step 5: Create study guide
-        print("📚 Step 5: Creating study guide...")
-        study_guide_file = os.path.join(temp_dir, "study_guide.md")
-        create_study_guide.create_markdown_study_guide(summary_file, study_guide_file)
-        
-        # Step 6: Convert to PDF
-        print("📄 Step 6: Generating PDF...")
-        pdf_file = os.path.join(temp_dir, "study_guide.pdf")
-        try:
-            markdown_to_pdf.convert_markdown_to_pdf(study_guide_file, pdf_file)
-        except Exception as e:
-            print(f"⚠️ PDF generation failed (non-fatal): {e}")
-            pdf_file = None
-        
-        # Step 7: Upload all files to storage
-        print("☁️ Step 7: Uploading to storage...")
-        outputs = {}
-        
-        files_to_upload = [
-            ("transcript_raw", transcript_file),
-            ("transcript_combined", combined_file),
-            ("transcript_chunks", chunks_file),
-            ("summary", summary_file),
-            ("study_guide_md", study_guide_file),
-        ]
-        
-        if pdf_file and os.path.exists(pdf_file):
-            files_to_upload.append(("study_guide_pdf", pdf_file))
-        
-        for name, local_path in files_to_upload:
-            if os.path.exists(local_path):
-                filename = os.path.basename(local_path)
-                stored_path = storage.save_file_from_path(meeting_id, filename, local_path)
-                outputs[name] = stored_path
-                print(f"   ✅ Uploaded: {filename}")
-        
-        # Update meeting with completed status
-        storage.update_meeting(meeting_id, {
-            "status": "completed",
-            "outputs": outputs,
-            "completed_at": utc_now().isoformat(),
-            "title": title
-        })
-        
-        print(f"\n✅ Pipeline complete!")
-        print(f"   Meeting ID: {meeting_id}")
-        for name, path in outputs.items():
-            print(f"   - {name}: {path}")
-        
-        return {"outputs": outputs}
 
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 8080))
     debug = os.getenv("DEBUG", "false").lower() == "true"
-    
+
     print(f"🚀 Starting Meeting Transcription Service on port {port}")
     print(f"📡 Webhook URL: {WEBHOOK_URL or 'auto-detect'}")
-    
+
     app.run(host='0.0.0.0', port=port, debug=debug)
 
