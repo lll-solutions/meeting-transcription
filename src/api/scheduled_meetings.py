@@ -27,6 +27,7 @@ class ScheduledMeeting:
         user: str,
         bot_name: str = "Meeting Assistant",
         user_timezone: str = "America/New_York",
+        instructor_name: str = None,
         id: str = None,
         status: str = "scheduled",
         created_at: datetime = None,
@@ -37,6 +38,7 @@ class ScheduledMeeting:
         self.user = user
         self.meeting_url = meeting_url
         self.bot_name = bot_name
+        self.instructor_name = instructor_name
         self.scheduled_time = scheduled_time  # Always UTC
         self.user_timezone = user_timezone
         self.status = status  # scheduled, completed, failed, cancelled
@@ -51,6 +53,7 @@ class ScheduledMeeting:
             "user": self.user,
             "meeting_url": self.meeting_url,
             "bot_name": self.bot_name,
+            "instructor_name": self.instructor_name,
             "scheduled_time": self.scheduled_time.isoformat(),
             "user_timezone": self.user_timezone,
             "status": self.status,
@@ -65,6 +68,7 @@ class ScheduledMeeting:
             "user": self.user,
             "meeting_url": self.meeting_url,
             "bot_name": self.bot_name,
+            "instructor_name": self.instructor_name,
             "scheduled_time": self.scheduled_time,
             "user_timezone": self.user_timezone,
             "status": self.status,

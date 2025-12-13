@@ -4,7 +4,66 @@ Create markdown and PDF study guide from educational summary JSON.
 """
 import json
 import sys
+import os
+import re
 from datetime import datetime
+from typing import List
+
+
+def consolidate_duplicates(items: List[str], item_type: str) -> List[str]:
+    """
+    Use LLM to consolidate semantically duplicate items.
+
+    Args:
+        items: List of items (practices, insights, Q&A, etc.)
+        item_type: Type of items ('best practices', 'unique insights', etc.)
+
+    Returns:
+        Deduplicated list of items
+    """
+    if len(items) <= 5:
+        return items  # Too few to need consolidation
+
+    # Import here to avoid circular dependencies
+    try:
+        from .summarize_educational_content import EducationalSummarizer
+    except ImportError:
+        import summarize_educational_content
+        EducationalSummarizer = summarize_educational_content.EducationalSummarizer
+
+    provider = os.getenv('LLM_PROVIDER', 'vertex_ai')
+
+    prompt = f"""You are reviewing a list of {item_type} extracted from a meeting transcript.
+Many items are semantically duplicate - they express the same core idea in different words.
+
+Your task: Consolidate this list by:
+1. Grouping semantically similar/duplicate items together
+2. For each group, create ONE clear, well-written statement that captures the essence
+3. Return ONLY the consolidated list, removing all duplicates
+
+Original list ({len(items)} items):
+{chr(10).join(f"{i+1}. {item}" for i, item in enumerate(items))}
+
+Return a JSON array of consolidated items. Each item should be a clear, standalone statement.
+Format: ["item 1", "item 2", ...]
+
+IMPORTANT: Return ONLY the JSON array, no other text."""
+
+    try:
+        summarizer = EducationalSummarizer(provider=provider)
+        response = summarizer.call_llm(prompt, max_tokens=2048)
+
+        # Extract JSON from response
+        json_match = re.search(r'\[.*\]', response, re.DOTALL)
+        if json_match:
+            consolidated = json.loads(json_match.group())
+            print(f"  Consolidated {len(items)} → {len(consolidated)} {item_type}")
+            return consolidated
+    except Exception as e:
+        print(f"  ⚠️  Consolidation failed for {item_type}: {e}. Using original list.")
+
+    return items
+
 
 def create_markdown_study_guide(summary_file: str, output_file: str):
     """
@@ -65,6 +124,11 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
         for practice in chunk.get('best_practices', []):
             if practice not in all_best_practices:
                 all_best_practices.append(practice)
+
+    # Consolidate duplicates
+    print("🔄 Consolidating best practices...")
+    all_best_practices = consolidate_duplicates(all_best_practices, "best practices")
+
     # Best Practices
     md.append("## Best Practices")
     md.append("")
@@ -77,6 +141,10 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
         for insight in chunk.get('unique_insights', []):
             if insight not in all_unique_insights:
                 all_unique_insights.append(insight)
+
+    # Consolidate duplicates
+    print("🔄 Consolidating unique insights...")
+    all_unique_insights = consolidate_duplicates(all_unique_insights, "unique insights")
     # Unique Insights
     if all_unique_insights:
         md.append("## Unique Insights")
@@ -149,6 +217,31 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
             qa['time_range'] = chunk['time_range']
             all_qa.append(qa)
 
+    # Consolidate duplicate questions
+    if len(all_qa) > 3:
+        print("🔄 Consolidating Q&A exchanges...")
+        # Group by similar questions
+        consolidated_qa = []
+        seen_questions = {}
+
+        for qa in all_qa:
+            question = qa.get('question', '')
+            # Simple similarity check - questions with 80%+ word overlap are considered duplicates
+            is_duplicate = False
+            for seen_q in seen_questions:
+                q_words = set(question.lower().split())
+                seen_words = set(seen_q.lower().split())
+                if len(q_words & seen_words) / max(len(q_words), len(seen_words)) > 0.8:
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                consolidated_qa.append(qa)
+                seen_questions[question] = True
+
+        print(f"  Consolidated {len(all_qa)} → {len(consolidated_qa)} Q&A exchanges")
+        all_qa = consolidated_qa
+
     # Q&A Exchanges
     if all_qa:
         md.append("## Q&A Exchanges")
@@ -156,9 +249,8 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
         for i, qa in enumerate(all_qa, 1):
             md.append(f"### Q{i}: {qa.get('question', 'Question')}")
             md.append("")
-            asked_by = qa.get('asked_by', 'Unknown')
             timestamp = qa.get('timestamp', qa.get('time_range', 'Unknown'))
-            md.append(f"**Asked by**: {asked_by} | **Time**: {timestamp}")
+            md.append(f"**Time**: {timestamp}")
             md.append("")
             md.append(f"**Answer**: {qa.get('answer_summary', 'No answer summary')}")
             md.append("")

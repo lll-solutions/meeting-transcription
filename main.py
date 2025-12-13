@@ -383,30 +383,32 @@ def ui_create_meeting():
 
     meeting_url = request.form.get('meeting_url')
     bot_name = request.form.get('bot_name') or get_default_bot_name()
+    instructor_name = request.form.get('instructor_name')
 
     # Validate meeting URL
     is_valid, error = validate_meeting_url(meeting_url)
     if not is_valid:
         return f'<div class="text-accent-coral p-4">{error}</div>', 400
-    
+
     # Determine webhook URL
     webhook_url = WEBHOOK_URL
     if not webhook_url:
         webhook_url = f"{request.url_root.rstrip('/')}/webhook/recall"
-    
+
     # Create bot
     bot_data = recall.create_bot(meeting_url, webhook_url, bot_name)
-    
+
     if not bot_data:
         return '<div class="text-accent-coral p-4">Failed to create bot</div>', 500
-    
+
     # Store meeting
     meeting_id = bot_data['id']
     storage.create_meeting(
         meeting_id=meeting_id,
         user=g.user,
         meeting_url=meeting_url,
-        bot_name=bot_name
+        bot_name=bot_name,
+        instructor_name=instructor_name
     )
     
     # Return updated meeting list
@@ -512,7 +514,8 @@ def create_scheduled_meeting():
     {
         "meeting_url": "https://zoom.us/j/123456789",
         "scheduled_time": "2024-12-10T15:30:00",  # In user's timezone
-        "bot_name": "Meeting Assistant" (optional)
+        "bot_name": "Meeting Assistant" (optional),
+        "instructor_name": "Instructor Name" (optional)
     }
     """
     from src.api.scheduled_meetings import ScheduledMeeting, get_scheduled_meeting_storage
@@ -534,6 +537,7 @@ def create_scheduled_meeting():
 
     meeting_url = data['meeting_url']
     bot_name = data.get('bot_name') or get_default_bot_name()
+    instructor_name = data.get('instructor_name')
 
     # Validate meeting URL
     is_valid, error = validate_meeting_url(meeting_url)
@@ -559,7 +563,8 @@ def create_scheduled_meeting():
         scheduled_time=scheduled_time_utc,
         user=g.user,
         bot_name=bot_name,
-        user_timezone=user_timezone
+        user_timezone=user_timezone,
+        instructor_name=instructor_name
     )
 
     storage_service = get_scheduled_meeting_storage()
@@ -747,6 +752,7 @@ def create_meeting():
     {
         "meeting_url": "https://zoom.us/j/123456789",
         "bot_name": "Meeting Assistant" (optional),
+        "instructor_name": "Instructor Name" (optional),
         "join_at": "now" or ISO timestamp (optional)
     }
     """
@@ -762,36 +768,38 @@ def create_meeting():
 
     if not data or 'meeting_url' not in data:
         return jsonify({"error": "meeting_url is required"}), 400
-    
+
     meeting_url = data['meeting_url']
     bot_name = data.get('bot_name') or get_default_bot_name()
-    
+    instructor_name = data.get('instructor_name')
+
     # Validate meeting URL
     is_valid, error = validate_meeting_url(meeting_url)
     if not is_valid:
         return jsonify({"error": error}), 400
-    
+
     # Determine webhook URL
     webhook_url = WEBHOOK_URL
     if not webhook_url:
         # Try to construct from request
         webhook_url = f"{request.url_root.rstrip('/')}/webhook/recall"
-    
+
     # Create bot
     bot_data = recall.create_bot(meeting_url, webhook_url, bot_name)
-    
+
     if not bot_data:
         return jsonify({"error": "Failed to create bot"}), 500
-    
+
     # Store meeting in persistent storage
     meeting_id = bot_data['id']
     meeting = storage.create_meeting(
         meeting_id=meeting_id,
         user=g.user,
         meeting_url=meeting_url,
-        bot_name=bot_name
+        bot_name=bot_name,
+        instructor_name=instructor_name
     )
-    
+
     return jsonify(meeting), 201
 
 
@@ -1015,12 +1023,14 @@ def process_transcript(transcript_id: str, recording_id: str = None):
     """
     # Find the meeting ID associated with this transcript
     meeting_id = None
+    meeting_record = None
     meetings_list = storage.list_meetings()
     for m in meetings_list:
         if m.get('transcript_id') == transcript_id:
             meeting_id = m['id']
+            meeting_record = m
             break
-    
+
     if not meeting_id:
         meeting_id = recording_id or transcript_id
     
@@ -1065,6 +1075,26 @@ def process_transcript(transcript_id: str, recording_id: str = None):
                 provider=os.getenv('LLM_PROVIDER', 'vertex_ai')
             )
             
+            # Step 4.5: Patch summary with meeting metadata
+            if meeting_record:
+                import json
+                with open(summary_file, 'r') as f:
+                    summary_data = json.load(f)
+
+                # Update metadata from meeting record
+                if 'metadata' not in summary_data:
+                    summary_data['metadata'] = {}
+
+                if meeting_record.get('created_at'):
+                    summary_data['metadata']['meeting_date'] = meeting_record['created_at'][:10]
+
+                if meeting_record.get('instructor_name'):
+                    summary_data['metadata']['instructor'] = meeting_record['instructor_name']
+
+                # Write back
+                with open(summary_file, 'w') as f:
+                    json.dump(summary_data, f, indent=2)
+
             # Step 5: Create study guide
             print("📚 Step 5: Creating study guide...")
             study_guide_file = os.path.join(temp_dir, "study_guide.md")

@@ -98,31 +98,34 @@ class MeetingStorage:
     # =========================================================================
     
     def create_meeting(
-        self, 
-        meeting_id: str, 
+        self,
+        meeting_id: str,
         user: str,
         meeting_url: str,
-        bot_name: str = "Meeting Assistant"
+        bot_name: str = "Meeting Assistant",
+        instructor_name: str = None
     ) -> Dict:
         """
         Create a new meeting record.
-        
+
         Args:
             meeting_id: Unique meeting/bot ID from Recall
             user: User who created the meeting (email or ID)
             meeting_url: The meeting URL
             bot_name: Name of the bot
-        
+            instructor_name: Optional name of instructor/presenter
+
         Returns:
             dict: The created meeting record
         """
         now = datetime.utcnow()
-        
+
         meeting = {
             "id": meeting_id,
             "user": user,
             "meeting_url": meeting_url,
             "bot_name": bot_name,
+            "instructor_name": instructor_name,
             "status": "joining",
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
