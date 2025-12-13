@@ -103,7 +103,7 @@ class MeetingStorage:
         user: str,
         meeting_url: str,
         bot_name: str = "Meeting Assistant",
-        instructor_name: str = None
+        instructor_name: str | None = None
     ) -> Dict:
         """
         Create a new meeting record.
@@ -180,7 +180,7 @@ class MeetingStorage:
                 self._save_local_meeting(meeting_id, meeting)
             return meeting
     
-    def list_meetings(self, user: str = None, status: str = None, limit: int = 100) -> List[Dict]:
+    def list_meetings(self, user: str | None = None, status: str | None = None, limit: int = 100) -> List[Dict]:
         """
         List meetings with optional filters.
 
