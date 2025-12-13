@@ -421,19 +421,19 @@ def verify_recall_webhook_signature(payload: bytes, signature: str) -> bool:
 def verify_webhook(f):
     """
     Decorator to verify Recall.ai webhook signatures.
-    
+
     In production, webhook signature verification is REQUIRED.
     """
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         config = get_config()
-        
+
         signature = request.headers.get("X-Recall-Signature", "")
-        is_production = os.getenv("ENV", "development") == "production"
-        
+        is_development = os.getenv("ENV", "").lower() == "development"
+
         if not config.recall_webhook_secret:
-            if is_production:
-                # In production, require webhook verification
+            if not is_development:
+                # In production (default), require webhook verification
                 print("❌ RECALL_WEBHOOK_SECRET not set - rejecting webhook in production")
                 return jsonify({"error": "Webhook verification not configured"}), 500
             else:
@@ -441,17 +441,52 @@ def verify_webhook(f):
                 print("⚠️ RECALL_WEBHOOK_SECRET not set - skipping verification (dev mode)")
                 g.user = "webhook"
                 return f(*args, **kwargs)
-        
+
         if not signature:
             return jsonify({"error": "Missing webhook signature"}), 401
-        
+
         payload = request.get_data()
-        
+
         if not verify_recall_webhook_signature(payload, signature):
             print("❌ Invalid webhook signature")
             return jsonify({"error": "Invalid webhook signature"}), 401
-        
+
         g.user = "webhook"
         return f(*args, **kwargs)
-    
+
+    return decorated
+
+
+def verify_cloud_tasks(f):
+    """
+    Decorator to verify requests come from Google Cloud Tasks.
+
+    Verifies Cloud Tasks headers (X-CloudTasks-TaskName, X-CloudTasks-QueueName).
+    Cloud Tasks automatically sends these headers - no extra configuration needed.
+
+    Secure by default: Only allows bypass in development mode (ENV=development).
+    """
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        is_development = os.getenv("ENV", "").lower() == "development"
+
+        # Check for Cloud Tasks headers (automatically sent by Cloud Tasks)
+        task_name = request.headers.get("X-CloudTasks-TaskName")
+        queue_name = request.headers.get("X-CloudTasks-QueueName")
+
+        if not task_name and not queue_name:
+            if not is_development:
+                # Production (default): reject requests without Cloud Tasks headers
+                print("❌ Missing Cloud Tasks headers - rejecting (not from Cloud Tasks)")
+                return jsonify({"error": "Unauthorized - not from Cloud Tasks"}), 401
+            else:
+                # Development: allow but warn
+                print("⚠️ Missing Cloud Tasks headers - allowing in dev mode")
+                g.user = "cloud-tasks"
+                return f(*args, **kwargs)
+
+        g.user = "cloud-tasks"
+        print(f"✅ Cloud Tasks request verified: {task_name}")
+        return f(*args, **kwargs)
+
     return decorated

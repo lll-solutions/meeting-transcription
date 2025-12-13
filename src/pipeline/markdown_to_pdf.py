@@ -1,107 +1,132 @@
 #!/usr/bin/env python3
 """
-Convert Markdown to PDF with nice formatting.
+Convert Markdown to PDF with nice formatting using WeasyPrint.
 """
 import sys
 import os
-import subprocess
 
-def markdown_to_html(md_file, html_file):
-    """Convert markdown to HTML with nice styling."""
-    with open(md_file, 'r') as f:
-        content = f.read()
+def convert_markdown_to_pdf(md_file, output_pdf=None):
+    """Convert markdown file to PDF.
 
-    # Try to use markdown library
+    Args:
+        md_file: Path to markdown file
+        output_pdf: Optional output PDF path (defaults to same name as md_file)
+
+    Returns:
+        str: Path to generated PDF file, or None if failed
+    """
     try:
         import markdown
-        html_content = markdown.markdown(content, extensions=['tables', 'fenced_code'])
-    except ImportError:
-        # Fallback: basic conversion
-        html_content = content.replace('\n', '<br>\n')
+        from weasyprint import HTML, CSS
+        from weasyprint.text.fonts import FontConfiguration
+    except ImportError as e:
+        print(f"✗ Missing required library: {e}")
+        print("Install with: pip install markdown weasyprint")
+        return None
 
-    # Create HTML with nice CSS
-    html = f"""<!DOCTYPE html>
+    # Read markdown content
+    with open(md_file, 'r') as f:
+        md_content = f.read()
+
+    # Convert markdown to HTML
+    html_content = markdown.markdown(md_content, extensions=['tables', 'fenced_code'])
+
+    # Create styled HTML document
+    styled_html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>Study Guide</title>
     <style>
+        @page {{
+            size: letter;
+            margin: 1in;
+        }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
             line-height: 1.6;
-            max-width: 900px;
-            margin: 40px auto;
-            padding: 20px;
             color: #333;
+            font-size: 11pt;
         }}
         h1 {{
             color: #2c3e50;
             border-bottom: 3px solid #3498db;
             padding-bottom: 10px;
+            font-size: 24pt;
+            margin-top: 0;
         }}
         h2 {{
             color: #34495e;
             margin-top: 30px;
             border-bottom: 2px solid #ecf0f1;
             padding-bottom: 5px;
+            font-size: 18pt;
+            page-break-after: avoid;
         }}
         h3 {{
             color: #7f8c8d;
             margin-top: 20px;
+            font-size: 14pt;
+            page-break-after: avoid;
         }}
         ul, ol {{
             margin-left: 20px;
+        }}
+        li {{
+            margin-bottom: 5px;
         }}
         table {{
             border-collapse: collapse;
             width: 100%;
             margin: 20px 0;
+            page-break-inside: avoid;
         }}
         table, th, td {{
             border: 1px solid #ddd;
         }}
         th, td {{
-            padding: 12px;
+            padding: 8px 12px;
             text-align: left;
         }}
         th {{
             background-color: #3498db;
             color: white;
+            font-weight: bold;
         }}
         code {{
             background-color: #f4f4f4;
             padding: 2px 6px;
             border-radius: 3px;
             font-family: 'Courier New', monospace;
+            font-size: 10pt;
         }}
         pre {{
             background-color: #f4f4f4;
             padding: 15px;
             border-radius: 5px;
             overflow-x: auto;
+            page-break-inside: avoid;
+        }}
+        pre code {{
+            background-color: transparent;
+            padding: 0;
         }}
         blockquote {{
             border-left: 4px solid #3498db;
             margin: 20px 0;
             padding-left: 20px;
             color: #555;
+            font-style: italic;
         }}
         hr {{
             border: none;
             border-top: 2px solid #ecf0f1;
             margin: 30px 0;
         }}
-        @media print {{
-            body {{
-                margin: 0;
-                padding: 20px;
-            }}
-            h1 {{
-                page-break-before: always;
-            }}
-            h1:first-child {{
-                page-break-before: avoid;
-            }}
+        p {{
+            margin-bottom: 10px;
+            orphans: 3;
+            widows: 3;
         }}
     </style>
 </head>
@@ -110,60 +135,19 @@ def markdown_to_html(md_file, html_file):
 </body>
 </html>"""
 
-    with open(html_file, 'w') as f:
-        f.write(html)
+    # Generate PDF
+    pdf_file = output_pdf or md_file.replace('.md', '.pdf')
 
-    print(f"✓ Created HTML: {html_file}")
-
-def html_to_pdf_chrome(html_file, pdf_file):
-    """Use Chrome to convert HTML to PDF."""
-    chrome_paths = [
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium',
-        'google-chrome',
-        'chromium',
-        'chromium-browser'
-    ]
-
-    for chrome in chrome_paths:
-        try:
-            cmd = [
-                chrome,
-                '--headless',
-                '--disable-gpu',
-                '--print-to-pdf=' + pdf_file,
-                html_file
-            ]
-            subprocess.run(cmd, check=True, capture_output=True, timeout=30)
-            print(f"✓ Created PDF: {pdf_file}")
-            return True
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            continue
-
-    return False
-
-def convert_markdown_to_pdf(md_file, output_pdf=None):
-    """Convert markdown file to PDF.
-    
-    Args:
-        md_file: Path to markdown file
-        output_pdf: Optional output PDF path (defaults to same name as md_file)
-    """
-    base_name = md_file.replace('.md', '')
-    html_file = f"{base_name}.html"
-    pdf_file = output_pdf or f"{base_name}.pdf"
-
-    # Convert to HTML
-    markdown_to_html(md_file, html_file)
-
-    # Convert to PDF
-    if html_to_pdf_chrome(html_file, pdf_file):
-        # Keep HTML file for reference
-        print(f"✓ HTML file saved: {html_file}")
+    try:
+        font_config = FontConfiguration()
+        HTML(string=styled_html).write_pdf(
+            pdf_file,
+            font_config=font_config
+        )
+        print(f"✓ Created PDF: {pdf_file}")
         return pdf_file
-    else:
-        print(f"✗ Failed to create PDF from {md_file}")
-        print("Make sure Google Chrome is installed")
+    except Exception as e:
+        print(f"✗ Failed to create PDF: {e}")
         return None
 
 if __name__ == '__main__':
