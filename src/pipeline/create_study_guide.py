@@ -106,16 +106,50 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
         md.append(overall_summary['executive_summary'])
         md.append("")
 
+    # Action Items
+    md.append("## Action Items")
+    md.append("")
+
+    if action_items:
+        if action_items.get('student_assignments'):
+            md.append("### Student Assignments")
+            md.append("")
+            for assignment in action_items['student_assignments']:
+                md.append(f"- **{assignment.get('assignment', 'Task')}**")
+                if assignment.get('due_date'):
+                    md.append(f"  - Due: {assignment['due_date']}")
+                if assignment.get('purpose'):
+                    md.append(f"  - Purpose: {assignment['purpose']}")
+                md.append("")
+
+        if action_items.get('instructor_commitments'):
+            md.append("### Instructor Commitments")
+            md.append("")
+            for commit in action_items['instructor_commitments']:
+                md.append(f"- {commit.get('commitment', 'Task')}")
+                if commit.get('timeline'):
+                    md.append(f"  - Timeline: {commit['timeline']}")
+                md.append("")
+
+        if action_items.get('preparation_for_next_class'):
+            md.append("### Preparation for Next Class")
+            md.append("")
+            for prep in action_items['preparation_for_next_class']:
+                md.append(f"- {prep.get('task', 'Task')}")
+                if prep.get('reason'):
+                    md.append(f"  - Reason: {prep['reason']}")
+                md.append("")
+
     # Table of Contents
     md.append("## Table of Contents")
     md.append("")
-    md.append("1. [Best Practices](#best-practices)")
-    md.append("2. [Unique Insights](#unique-insights)")
-    md.append("3. [Key Concepts](#key-concepts)")
+    md.append("1. [Action Items](#action-items)")
+    md.append("2. [Best Practices](#best-practices)")
+    md.append("3. [Unique Insights](#unique-insights)")
     md.append("4. [Tools & Frameworks](#tools--frameworks)")
     md.append("5. [Q&A Exchanges](#qa-exchanges)")
     md.append("6. [Class Timeline](#class-timeline)")
-    md.append("7. [Action Items](#action-items)")
+    md.append("7. [Key Concepts](#key-concepts)")
     md.append("")
 
     # Collect all best practices
@@ -154,7 +188,7 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
         for i, insight in enumerate(all_unique_insights, 1):
             md.append(f"{i}. {insight}")
         md.append("")
-    # Collect all unique concepts
+    # Collect all unique concepts (to be rendered later at the end)
     all_concepts = {}
     for chunk in chunk_analyses:
         for concept in chunk.get('key_concepts', []):
@@ -167,25 +201,6 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
                     'chunks': []
                 }
             all_concepts[name]['chunks'].append(chunk['chunk_number'])
-    # Key Concepts
-    md.append("## Key Concepts")
-    md.append("")
-    for i, (name, details) in enumerate(sorted(all_concepts.items()), 1):
-        md.append(f"### {i}. {name}")
-        md.append("")
-        if details['definition']:
-            md.append(f"**Definition**: {details['definition']}")
-            md.append("")
-        if details['explanation']:
-            md.append(f"**Explanation**: {details['explanation']}")
-            md.append("")
-        if details['examples']:
-            md.append("**Examples**:")
-            for ex in details['examples']:
-                md.append(f"- {ex}")
-            md.append("")
-        md.append(f"*Covered in: Chunk(s) {', '.join(map(str, details['chunks']))}*")
-        md.append("")
     # Collect all unique tools
     all_tools = {}
     for chunk in chunk_analyses:
@@ -276,39 +291,25 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
                 md.append(f"- {tool.get('name', 'Unknown')}")
             md.append("")
 
-    # Action Items
-    md.append("## Action Items")
+    # Key Concepts (at the end as requested)
+    md.append("## Key Concepts")
     md.append("")
-
-    if action_items:
-        if action_items.get('student_assignments'):
-            md.append("### Student Assignments")
+    for i, (name, details) in enumerate(sorted(all_concepts.items()), 1):
+        md.append(f"### {i}. {name}")
+        md.append("")
+        if details['definition']:
+            md.append(f"**Definition**: {details['definition']}")
             md.append("")
-            for assignment in action_items['student_assignments']:
-                md.append(f"- **{assignment.get('assignment', 'Task')}**")
-                if assignment.get('due_date'):
-                    md.append(f"  - Due: {assignment['due_date']}")
-                if assignment.get('purpose'):
-                    md.append(f"  - Purpose: {assignment['purpose']}")
-                md.append("")
-
-        if action_items.get('instructor_commitments'):
-            md.append("### Instructor Commitments")
+        if details['explanation']:
+            md.append(f"**Explanation**: {details['explanation']}")
             md.append("")
-            for commit in action_items['instructor_commitments']:
-                md.append(f"- {commit.get('commitment', 'Task')}")
-                if commit.get('timeline'):
-                    md.append(f"  - Timeline: {commit['timeline']}")
-                md.append("")
-
-        if action_items.get('preparation_for_next_class'):
-            md.append("### Preparation for Next Class")
+        if details['examples']:
+            md.append("**Examples**:")
+            for ex in details['examples']:
+                md.append(f"- {ex}")
             md.append("")
-            for prep in action_items['preparation_for_next_class']:
-                md.append(f"- {prep.get('task', 'Task')}")
-                if prep.get('reason'):
-                    md.append(f"  - Reason: {prep['reason']}")
-                md.append("")
+        md.append(f"*Covered in: Chunk(s) {', '.join(map(str, details['chunks']))}*")
+        md.append("")
 
     # Footer
     md.append("---")
