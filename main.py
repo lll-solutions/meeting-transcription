@@ -21,6 +21,7 @@ from src.api.auth import (
     init_auth,
     require_auth,
     verify_webhook,
+    verify_cloud_tasks,
     get_current_user
 )
 from src.pipeline import (
@@ -1072,18 +1073,26 @@ def process_transcript(transcript_id: str, recording_id: str = None):
             # Step 6: Convert to PDF
             print("📄 Step 6: Generating PDF...")
             pdf_file = os.path.join(temp_dir, "study_guide.pdf")
-            markdown_to_pdf.convert_markdown_to_pdf(study_guide_file, pdf_file)
-            
+            try:
+                markdown_to_pdf.convert_markdown_to_pdf(study_guide_file, pdf_file)
+            except Exception as e:
+                print(f"⚠️ PDF generation failed (non-fatal): {e}")
+                pdf_file = None
+
             # Step 7: Upload all files to storage
             print("☁️ Step 7: Uploading to storage...")
             outputs = {}
-            
-            for name, local_path in [
+
+            files_to_upload = [
                 ("transcript", transcript_file),
                 ("summary", summary_file),
                 ("study_guide_md", study_guide_file),
-                ("study_guide_pdf", pdf_file)
-            ]:
+            ]
+
+            if pdf_file and os.path.exists(pdf_file):
+                files_to_upload.append(("study_guide_pdf", pdf_file))
+
+            for name, local_path in files_to_upload:
                 filename = os.path.basename(local_path)
                 stored_path = storage.save_file_from_path(meeting_id, filename, local_path)
                 outputs[name] = stored_path
@@ -1296,6 +1305,7 @@ def upload_transcript():
 
 
 @app.route('/api/transcripts/process/<meeting_id>', methods=['POST'])
+@verify_cloud_tasks
 def process_transcript_task(meeting_id: str):
     """
     Process endpoint called by Cloud Tasks.
@@ -1366,6 +1376,7 @@ def process_transcript_task(meeting_id: str):
 
 
 @app.route('/api/transcripts/process-recall/<meeting_id>', methods=['POST'])
+@verify_cloud_tasks
 def process_recall_transcript_task(meeting_id: str):
     """
     Process endpoint called by Cloud Tasks for Recall API transcripts.
@@ -1398,6 +1409,89 @@ def process_recall_transcript_task(meeting_id: str):
         import traceback
         traceback.print_exc()
         # Note: process_transcript handles its own error status updates
+        return jsonify({"status": "failed", "error": str(e)}), 500
+
+
+@app.route('/api/meetings/<meeting_id>/reprocess', methods=['POST'])
+@require_auth
+def reprocess_meeting(meeting_id: str):
+    """
+    Reprocess a failed or completed meeting.
+    This endpoint can be used to retry processing for meetings that failed,
+    or to regenerate outputs (e.g., after PDF generation was fixed).
+
+    Requires authentication - call with Bearer token or API key.
+    """
+    import json as json_lib
+
+    print(f"🔄 Reprocess request for meeting {meeting_id}", flush=True)
+
+    # Get the meeting
+    meeting = storage.get_meeting(meeting_id)
+    if not meeting:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    # Check if this is a Recall transcript or uploaded transcript
+    transcript_id = meeting.get('transcript_id')
+    recording_id = meeting.get('recording_id')
+
+    try:
+        if transcript_id:
+            # This is a Recall transcript
+            print(f"🔄 Reprocessing Recall transcript {transcript_id}", flush=True)
+            process_transcript(transcript_id, recording_id)
+            return jsonify({
+                "status": "completed",
+                "meeting_id": meeting_id,
+                "type": "recall"
+            }), 200
+        else:
+            # This is an uploaded transcript - fetch from GCS temp or original upload
+            bucket_name = os.getenv("OUTPUT_BUCKET")
+
+            # Try temp location first (from recent upload)
+            blob_name = f"temp/{meeting_id}/transcript_upload.json"
+
+            from google.cloud import storage as gcs_storage
+            gcs_client = gcs_storage.Client()
+            bucket = gcs_client.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+
+            # If temp doesn't exist, try to get from outputs
+            if not blob.exists():
+                # Check if meeting has transcript_raw output
+                outputs = meeting.get('outputs', {})
+                if 'transcript_raw' in outputs:
+                    # Download from the stored location
+                    raw_path = outputs['transcript_raw']
+                    blob_name = raw_path.replace(f"gs://{bucket_name}/", "")
+                    blob = bucket.blob(blob_name)
+                else:
+                    return jsonify({
+                        "error": "No transcript data found for this meeting"
+                    }), 404
+
+            transcript_json = blob.download_as_text()
+            transcript_data = json_lib.loads(transcript_json)
+            title = meeting.get('title') or meeting.get('bot_name', 'Uploaded Transcript')
+
+            print(f"🔄 Reprocessing uploaded transcript: {len(transcript_data)} segments", flush=True)
+            process_uploaded_transcript(meeting_id, transcript_data, title)
+
+            return jsonify({
+                "status": "completed",
+                "meeting_id": meeting_id,
+                "type": "uploaded"
+            }), 200
+
+    except Exception as e:
+        print(f"❌ Reprocessing failed for {meeting_id}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        storage.update_meeting(meeting_id, {
+            "status": "failed",
+            "error": f"Reprocessing failed: {str(e)}"
+        })
         return jsonify({"status": "failed", "error": str(e)}), 500
 
 
