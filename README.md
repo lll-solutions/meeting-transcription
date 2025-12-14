@@ -1,6 +1,6 @@
 # Meeting Transcription & Summarization Pipeline
 
-Transform your video meetings into comprehensive, AI-powered study guides and summaries. Perfect for educational classes, workshops, training sessions, and any meeting worth remembering.
+Transform your video meetings into comprehensive, AI-powered study guides and summaries. Perfect for educational classes, workshops, training sessions, and any meeting worth remembering. Built with an **extensible plugin architecture** that enables custom post-meeting actions tailored to your domain—whether that's generating study guides, meeting summaries, or your own custom workflows.
 
 [![License: ELv2](https://img.shields.io/badge/License-ELv2-blue.svg)](LICENSE)
 
@@ -8,11 +8,16 @@ Transform your video meetings into comprehensive, AI-powered study guides and su
 
 1. **Join any meeting** (Zoom, Google Meet, Microsoft Teams)
 2. **Record and transcribe** with speaker identification
-3. **Generate AI-powered summaries** with key concepts, action items, and study guides
-4. **Export to Markdown and PDF** for easy sharing
+3. **Process with AI** using extensible plugins for domain-specific outputs
+4. **Generate comprehensive study guides** with key concepts, Q&A, and action items (via Educational Plugin)
+5. **Execute custom post-meeting actions** tailored to your needs
+6. **Export to Markdown and PDF** for easy sharing
 
 ```
-Meeting URL → Bot Joins → Records → Transcribes → AI Summarizes → PDF Study Guide
+Meeting URL → Bot Joins → Records → Transcribes → Plugin Processes → Custom Output
+                                                    ↓
+                                         (e.g., Study Guide with
+                                          key concepts, Q&A, etc.)
 ```
 
 ## ✨ Features
@@ -23,6 +28,30 @@ Meeting URL → Bot Joins → Records → Transcribes → AI Summarizes → PDF 
 - 📚 **Study Guide Generation** - Perfect for educational content
 - 📄 **PDF Export** - Professional, shareable documents
 - ☁️ **One-Click GCP Deploy** - Easy self-hosting on Google Cloud
+- 🔌 **Plugin Architecture** - Extensible system for custom domain-specific processing
+
+## 🔌 Plugin Architecture
+
+The meeting-transcription system uses a **plugin architecture** to support different types of content while sharing common infrastructure (bot management, storage, authentication, deployment).
+
+**Educational Plugin (Built-in):**
+- Generates comprehensive study guides from class recordings, workshops, and training sessions
+- Time-based chunking (configurable 5-30 minute segments)
+- Multi-stage AI analysis with intelligent deduplication
+- Extracts key concepts, Q&A sessions, and actionable takeaways
+- Outputs professional Markdown and PDF study guides
+
+**Extensibility:**
+Each plugin has full control over:
+- **Chunking strategy** - How to divide the transcript (time-based, whole-session, by-topic)
+- **LLM orchestration** - Processing approach (single-pass, multi-stage analysis, etc.)
+- **Output format** - What gets generated (study guides, summaries, custom formats)
+- **User settings** - Configurable options for your domain
+
+**Build Your Own:**
+Create custom plugins for your specific domain—legal case summaries, sales call analysis, medical consultations, or any other use case. The plugin system handles all the infrastructure while you focus on domain-specific processing logic.
+
+See [Plugin Architecture Guide](docs/PLUGIN_ARCHITECTURE.md) for details on creating custom plugins.
 
 ## 🚀 Quick Start (5 minutes)
 
@@ -92,6 +121,7 @@ See [Configuration Guide](docs/CONFIGURATION.md) for setup instructions.
 
 ## 📖 Documentation
 
+- [Plugin Architecture Guide](docs/PLUGIN_ARCHITECTURE.md) - How to create and use plugins
 - [Deployment Guide](docs/DEPLOYMENT.md) - GCP setup instructions
 - [Architecture Guide](docs/ARCHITECTURE.md) - System design, auth, and storage
 - [Functional Requirements](docs/REQUIREMENTS.md) - What this system does
@@ -100,24 +130,45 @@ See [Configuration Guide](docs/CONFIGURATION.md) for setup instructions.
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Meeting URL   │────▶│   Recall.ai     │────▶│   Cloud Run     │
-│  (Zoom/Meet/    │     │   (Bot infra)   │     │  (Your Server)  │
-│   Teams)        │     │                 │     │                 │
-└─────────────────┘     └─────────────────┘     └────────┬────────┘
-                                                         │
-                                                         ▼
-                        ┌─────────────────┐     ┌─────────────────┐
-                        │   LLM Provider  │◀────│  Summarization  │
-                        │ (Gemini/OpenAI/ │     │    Pipeline     │
-                        │  Azure/Claude)  │     │                 │
-                        └─────────────────┘     └────────┬────────┘
-                                                         │
-                                                         ▼
-                                                ┌─────────────────┐
-                                                │  Study Guide    │
-                                                │  (MD + PDF)     │
-                                                └─────────────────┘
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────────────┐
+│   Meeting URL   │────▶│   Recall.ai     │────▶│   Cloud Run             │
+│  (Zoom/Meet/    │     │   (Bot infra)   │     │  (Your Server)          │
+│   Teams)        │     │                 │     │                         │
+└─────────────────┘     └─────────────────┘     └──────────┬──────────────┘
+                                                           │
+                                                           ▼
+                                                  ┌─────────────────┐
+                                                  │ Base Pipeline   │
+                                                  │ • Transcript    │
+                                                  │ • Storage       │
+                                                  │ • Auth          │
+                                                  └────────┬────────┘
+                                                           │
+                                            ┌──────────────┴──────────────┐
+                                            │   Plugin Architecture       │
+                                            │  (Domain-Specific Process)  │
+                                            └──────────────┬──────────────┘
+                                                           │
+                                    ┌──────────────────────┼──────────────────────┐
+                                    ▼                      ▼                      ▼
+                          ┌──────────────────┐   ┌──────────────────┐   ┌──────────────┐
+                          │  Educational     │   │  Custom Plugin   │   │   Future     │
+                          │  Plugin          │   │  (Your Domain)   │   │   Plugins    │
+                          │                  │   │                  │   │              │
+                          └────────┬─────────┘   └────────┬─────────┘   └──────┬───────┘
+                                   │                      │                     │
+                                   ▼                      ▼                     ▼
+                          ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐
+                          │   LLM Provider  │     │  LLM Provider│     │ LLM Provider │
+                          │ (Gemini/OpenAI/ │     │ (Your choice)│     │ (Your choice)│
+                          │  Azure/Claude)  │     │              │     │              │
+                          └────────┬────────┘     └──────┬───────┘     └──────┬───────┘
+                                   │                     │                     │
+                                   ▼                     ▼                     ▼
+                          ┌─────────────────┐    ┌──────────────┐     ┌──────────────┐
+                          │  Study Guide    │    │ Custom Output│     │    Custom    │
+                          │  (MD + PDF)     │    │              │     │    Output    │
+                          └─────────────────┘    └──────────────┘     └──────────────┘
 ```
 
 ## 💰 Cost Estimation
