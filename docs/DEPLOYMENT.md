@@ -156,6 +156,87 @@ Your meeting transcription service is now running. When the bot joins a meeting 
 
 ---
 
+## Rate Limiting & Scaling
+
+### Default Setup (Recommended for Most Users)
+
+Your deployment includes **built-in rate limiting** to protect against abuse:
+- Login attempts: 5 per minute
+- Meeting creation: 10 per hour
+- Uploads: 10 per hour
+
+**How it works:** Each Cloud Run instance tracks rate limits in memory.
+
+**Cost: $0** ✅
+
+### When Memory-Based Rate Limiting is Sufficient
+
+The default setup works great for:
+- ✅ **Single user or small team** (< 10 users)
+- ✅ **Low to moderate traffic** (< 100 requests/hour)
+- ✅ **Development and testing**
+- ✅ **Personal use**
+
+**Why?** Cloud Run auto-scales instances, and each instance provides rate limiting. Unless you have many concurrent users hitting the same endpoint simultaneously, the default is perfectly adequate.
+
+### When to Upgrade to Redis
+
+Consider adding Redis/Memorystore only if:
+- ❗ **High concurrent traffic** (100+ requests/second)
+- ❗ **Many simultaneous users** (50+ active users)
+- ❗ **Strict rate limits** needed across all instances
+- ❗ **You're seeing rate limit bypass** in logs
+
+### Cost of Redis Upgrade
+
+**Memorystore for Redis pricing:**
+- Basic tier (1 GB): **~$49/month** 💰
+- Standard tier (1 GB): **~$98/month** 💰💰
+
+**Why we don't recommend it at first:**
+- Adds 10-20x to your monthly costs
+- Most deployments never need it
+- Memory-based limiting is sufficient for 95% of use cases
+
+### How to Upgrade (If Needed)
+
+If you determine you need distributed rate limiting:
+
+1. **Create Redis instance:**
+```bash
+gcloud redis instances create rate-limiter \
+  --size=1 \
+  --region=us-central1 \
+  --tier=basic \
+  --redis-version=redis_7_0
+```
+
+2. **Get Redis IP:**
+```bash
+gcloud redis instances describe rate-limiter \
+  --region=us-central1 \
+  --format="value(host)"
+```
+
+3. **Update Cloud Run service:**
+```bash
+gcloud run services update meeting-transcription \
+  --set-env-vars RATE_LIMIT_STORAGE_URI=redis://[REDIS_IP]:6379
+```
+
+**That's it!** The application automatically detects and uses Redis. No code changes needed.
+
+### Monitoring Rate Limiting
+
+Check your Cloud Run logs to see if rate limiting is working:
+```
+⚠️  WARNING: Rate limiting using in-memory storage. Not shared across Cloud Run instances!
+```
+
+This warning is normal and expected for the default setup. It just reminds you that limits aren't shared across instances (which is fine for most use cases).
+
+---
+
 ## Updating Your Deployment
 
 To update environment variables (like API keys):

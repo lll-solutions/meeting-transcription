@@ -46,6 +46,26 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 # Initialize authentication
 init_auth(app)
 
+# Initialize rate limiting (security against brute force and DoS)
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+# For Cloud Run, use Redis/Memorystore for shared state across instances
+# Set RATE_LIMIT_STORAGE_URI to redis://[host]:[port] in production
+# Falls back to memory:// for development (not shared across instances)
+rate_limit_uri = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
+if rate_limit_uri == "memory://":
+    print("⚠️  WARNING: Rate limiting using in-memory storage. Not shared across Cloud Run instances!")
+    print("   Set RATE_LIMIT_STORAGE_URI=redis://[host]:[port] for production")
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri=rate_limit_uri,
+    strategy="fixed-window"
+)
+
 # Add Jinja filter for timezone formatting
 @app.template_filter('format_user_time')
 def format_user_time_filter(dt_str: str, user_timezone: str = "America/New_York") -> str:
@@ -293,10 +313,11 @@ def api_info():
 # =============================================================================
 
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("5 per minute")  # Strict rate limit to prevent brute force
 def login():
     """
     Login with email and password.
-    Returns a JWT token.
+    Sets httpOnly secure cookie and returns JWT token (for backward compatibility).
     """
     try:
         data = request.json
@@ -312,10 +333,26 @@ def login():
 
         token = service.create_token(user)
 
-        return jsonify({
+        # Create response
+        response = jsonify({
             "token": token,
             "user": user.to_dict()
         })
+
+        # Set httpOnly, secure cookie for enhanced security
+        # This protects against XSS attacks (localStorage is vulnerable to XSS)
+        is_production = os.getenv("ENV", "production").lower() != "development"
+
+        response.set_cookie(
+            'auth_token',
+            token,
+            httponly=True,      # Cannot be accessed via JavaScript (XSS protection)
+            secure=is_production,  # HTTPS only in production
+            samesite='Lax',     # CSRF protection
+            max_age=7*24*60*60  # 7 days (matches JWT expiration)
+        )
+
+        return response
     except Exception as e:
         print(f"Login error: {e}")
         import traceback
@@ -323,7 +360,28 @@ def login():
         return jsonify({"error": f"Login failed: {e!s}"}), 500
 
 
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    """
+    Logout the current user by clearing the auth cookie.
+    """
+    response = jsonify({"message": "Logged out successfully"})
+
+    # Clear the auth cookie
+    response.set_cookie(
+        'auth_token',
+        '',
+        httponly=True,
+        secure=os.getenv("ENV", "production").lower() != "development",
+        samesite='Lax',
+        max_age=0  # Expire immediately
+    )
+
+    return response
+
+
 @app.route('/api/auth/setup', methods=['POST'])
+@limiter.limit("3 per hour")  # Very strict - setup should be rare
 def setup_admin():
     """
     Create the initial admin user.
@@ -501,6 +559,7 @@ def update_current_user():
 
 @app.route('/api/scheduled-meetings', methods=['POST'])
 @require_auth
+@limiter.limit("20 per hour")  # Allow reasonable scheduling activity
 def create_scheduled_meeting():
     """
     Schedule a bot to join a meeting at a specific time.
@@ -636,6 +695,7 @@ def execute_scheduled_meetings():
 
 @app.route('/api/meetings', methods=['POST'])
 @require_auth
+@limiter.limit("10 per hour")  # Limit meeting creation to prevent abuse
 def create_meeting():
     """
     Create a bot to join a meeting.
@@ -779,17 +839,22 @@ def get_meeting_outputs(meeting_id):
 
 
 @app.route('/api/meetings/<meeting_id>/outputs/<filename>', methods=['GET'])
+@require_auth
 def download_output(meeting_id, filename):
     """
     Download a specific output file.
 
     Fetches from GCS and serves directly through Flask.
-    No auth required - meeting IDs are UUIDs (hard to guess).
+    Requires authentication - verifies user owns the meeting.
     """
     # Check if meeting exists
     meeting = meeting_service.get_meeting(meeting_id)
     if not meeting:
         return jsonify({"error": "Meeting not found"}), 404
+
+    # Verify user owns this meeting (unless anonymous mode is enabled)
+    if g.user != 'anonymous' and meeting.get('user') != g.user:
+        return jsonify({"error": "Forbidden - you don't have access to this meeting"}), 403
 
     # Fetch file content from storage (GCS or local)
     content = storage.get_file(meeting_id, filename)
@@ -815,6 +880,7 @@ def download_output(meeting_id, filename):
 
 @app.route('/api/transcripts/upload', methods=['POST'])
 @require_auth
+@limiter.limit("10 per hour")  # Limit uploads to prevent abuse
 def upload_transcript():
     """
     Upload a transcript JSON file and process it through the LLM pipeline.

@@ -291,7 +291,7 @@ class WebhookService:
                     "body": json.dumps(payload).encode(),
                     "oidc_token": {
                         "service_account_email": (
-                            f"{os.getenv('PROJECT_NUMBER', '')}-compute@developer.gserviceaccount.com"
+                            f"{os.getenv('GCP_PROJECT_NUMBER', '')}-compute@developer.gserviceaccount.com"
                         )
                     },
                 }
