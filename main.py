@@ -779,17 +779,22 @@ def get_meeting_outputs(meeting_id):
 
 
 @app.route('/api/meetings/<meeting_id>/outputs/<filename>', methods=['GET'])
+@require_auth
 def download_output(meeting_id, filename):
     """
     Download a specific output file.
 
     Fetches from GCS and serves directly through Flask.
-    No auth required - meeting IDs are UUIDs (hard to guess).
+    Requires authentication - verifies user owns the meeting.
     """
     # Check if meeting exists
     meeting = meeting_service.get_meeting(meeting_id)
     if not meeting:
         return jsonify({"error": "Meeting not found"}), 404
+
+    # Verify user owns this meeting (unless anonymous mode is enabled)
+    if g.user != 'anonymous' and meeting.get('user') != g.user:
+        return jsonify({"error": "Forbidden - you don't have access to this meeting"}), 403
 
     # Fetch file content from storage (GCS or local)
     content = storage.get_file(meeting_id, filename)
