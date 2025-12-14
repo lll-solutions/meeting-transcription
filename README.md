@@ -23,6 +23,28 @@ Meeting URL → Bot Joins → Records → Transcribes → AI Summarizes → PDF 
 - 📚 **Study Guide Generation** - Perfect for educational content
 - 📄 **PDF Export** - Professional, shareable documents
 - ☁️ **One-Click GCP Deploy** - Easy self-hosting on Google Cloud
+- 🔌 **Plugin Architecture** - Domain-specific processing (educational, therapy, legal, etc.)
+
+## 🔌 Plugin System
+
+The meeting-transcription system uses a **plugin architecture** to support different types of content while sharing common infrastructure (bot management, storage, authentication, deployment).
+
+**Built-in Plugins:**
+- **Educational** - Study guides for classes, workshops, training sessions
+- **Therapy** - HIPAA-compliant SOAP notes and clinical documentation ([therapy-meeting-transcription](https://github.com/lll-solutions/therapy-meeting-transcription))
+
+**Coming Soon:**
+- **Legal** - Case summaries, depositions
+- **Medical** - Clinical notes, patient consultations
+- **Sales** - Call summaries, objection handling
+
+Each plugin controls:
+- Chunking strategy (time-based, whole-session, by-topic)
+- LLM orchestration (single-pass, multi-stage, etc.)
+- Output format (study guides, SOAP notes, case summaries)
+- User-configurable settings
+
+See [Plugin Architecture Guide](docs/PLUGIN_ARCHITECTURE.md) for details on creating custom plugins.
 
 ## 🚀 Quick Start (5 minutes)
 
@@ -92,6 +114,7 @@ See [Configuration Guide](docs/CONFIGURATION.md) for setup instructions.
 
 ## 📖 Documentation
 
+- [Plugin Architecture Guide](docs/PLUGIN_ARCHITECTURE.md) - How to create and use plugins
 - [Deployment Guide](docs/DEPLOYMENT.md) - GCP setup instructions
 - [Architecture Guide](docs/ARCHITECTURE.md) - System design, auth, and storage
 - [Functional Requirements](docs/REQUIREMENTS.md) - What this system does
