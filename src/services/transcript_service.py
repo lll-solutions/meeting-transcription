@@ -14,27 +14,29 @@ from datetime import UTC, datetime
 
 from src.api.recall import download_transcript
 from src.api.storage import MeetingStorage
-from src.pipeline import (
-    combine_transcript_words,
-    create_educational_chunks,
-    create_study_guide,
-    markdown_to_pdf,
-    summarize_educational_content,
-)
+from src.pipeline import combine_transcript_words
+from src.plugins import TranscriptPlugin
 
 
 class TranscriptService:
     """Service for processing meeting transcripts through the AI pipeline."""
 
-    def __init__(self, storage: MeetingStorage, llm_provider: str | None = None) -> None:
+    def __init__(
+        self,
+        storage: MeetingStorage,
+        plugin: TranscriptPlugin | None = None,
+        llm_provider: str | None = None
+    ) -> None:
         """
         Initialize the transcript service.
 
         Args:
             storage: Meeting storage instance for persistence
+            plugin: Plugin for domain-specific processing (required for processing methods)
             llm_provider: LLM provider to use (defaults to 'vertex_ai')
         """
         self.storage = storage
+        self.plugin = plugin
         self.llm_provider = llm_provider or "vertex_ai"
 
     def process_recall_transcript(
@@ -164,12 +166,9 @@ class TranscriptService:
         Run the unified transcript processing pipeline.
 
         Steps:
-        2. Combine words into sentences
-        3. Create educational chunks
-        4. LLM summarization
-        5. Create study guide (Markdown)
-        6. Convert to PDF
-        7. Upload to storage
+        2. Combine words into sentences (universal preprocessing)
+        3. Hand off to plugin for domain-specific processing
+        4. Upload outputs to storage
 
         Args:
             meeting_id: Meeting ID
@@ -180,58 +179,66 @@ class TranscriptService:
 
         Returns:
             dict: Output file paths by name
+
+        Raises:
+            ValueError: If plugin is not set
         """
-        # Step 2: Combine words into sentences
+        # Validate plugin is available for processing
+        if not self.plugin:
+            raise ValueError(
+                "Plugin is required for transcript processing. "
+                "Create TranscriptService with a plugin instance."
+            )
+
+        # Step 2: Combine words into sentences (universal preprocessing)
         print("📝 Step 2: Combining words into sentences...")
         combined_file = os.path.join(temp_dir, "transcript_combined.json")
         combine_transcript_words.combine_transcript_words(
             transcript_file, combined_file
         )
 
-        # Step 3: Create educational chunks
-        print("📦 Step 3: Creating educational chunks...")
-        chunks_file = os.path.join(temp_dir, "transcript_chunks.json")
-        create_educational_chunks.create_educational_content_chunks(
-            combined_file, chunks_file, chunk_minutes=10
+        # Step 3: Hand off to plugin for domain-specific processing
+        print(f"🔌 Step 3: Processing with {self.plugin.display_name} plugin...")
+
+        # Prepare metadata for plugin
+        plugin_metadata = meeting_record or {}
+
+        # Run plugin processing
+        plugin_outputs = self.plugin.process_transcript(
+            combined_transcript_path=combined_file,
+            output_dir=temp_dir,
+            llm_provider=self.llm_provider,
+            metadata=plugin_metadata
         )
 
-        # Step 4: LLM summarization
-        print("🤖 Step 4: Generating AI summary...")
-        summary_file = os.path.join(temp_dir, "summary.json")
-        summarize_educational_content.summarize_educational_content(
-            chunks_file, summary_file, provider=self.llm_provider
-        )
+        # Step 4: Upload files to storage
+        print("☁️ Step 4: Uploading to storage...")
+        outputs = {}
 
-        # Step 4.5: Patch summary with meeting metadata (if available)
-        if meeting_record:
-            self._patch_summary_metadata(summary_file, meeting_record)
+        # Always upload raw transcript and combined transcript
+        files_to_upload = [
+            ("transcript", transcript_file),
+            ("transcript_combined", combined_file),
+        ]
 
-        # Step 5: Create study guide
-        print("📚 Step 5: Creating study guide...")
-        study_guide_file = os.path.join(temp_dir, "study_guide.md")
-        create_study_guide.create_markdown_study_guide(summary_file, study_guide_file)
+        # Upload intermediate files if requested
+        if upload_intermediate and "chunks" in plugin_outputs:
+            files_to_upload.append(("transcript_chunks", plugin_outputs["chunks"]))
 
-        # Step 6: Convert to PDF
-        print("📄 Step 6: Generating PDF...")
-        pdf_file: str | None = os.path.join(temp_dir, "study_guide.pdf")
-        try:
-            markdown_to_pdf.convert_markdown_to_pdf(study_guide_file, pdf_file)
-        except Exception as e:
-            print(f"⚠️ PDF generation failed (non-fatal): {e}")
-            pdf_file = None
+        # Upload all plugin outputs
+        for name, local_path in plugin_outputs.items():
+            if os.path.exists(local_path):
+                files_to_upload.append((name, local_path))
 
-        # Step 7: Upload files to storage
-        print("☁️ Step 7: Uploading to storage...")
-        outputs = self._upload_outputs(
-            meeting_id,
-            transcript_file,
-            combined_file,
-            chunks_file,
-            summary_file,
-            study_guide_file,
-            pdf_file,
-            upload_intermediate,
-        )
+        # Perform uploads
+        for name, local_path in files_to_upload:
+            if os.path.exists(local_path):
+                filename = os.path.basename(local_path)
+                stored_path = self.storage.save_file_from_path(
+                    meeting_id, filename, local_path
+                )
+                outputs[name] = stored_path
+                print(f"   ✅ Uploaded: {filename}")
 
         # Update meeting with completed status
         self.storage.update_meeting(
@@ -247,94 +254,6 @@ class TranscriptService:
         print(f"   Meeting ID: {meeting_id}")
         for name, path in outputs.items():
             print(f"   - {name}: {path}")
-
-        return outputs
-
-    def _patch_summary_metadata(
-        self, summary_file: str, meeting_record: dict
-    ) -> None:
-        """
-        Patch summary JSON with meeting metadata.
-
-        Args:
-            summary_file: Path to summary JSON file
-            meeting_record: Meeting record with metadata
-        """
-        with open(summary_file) as f:
-            summary_data = json.load(f)
-
-        if "metadata" not in summary_data:
-            summary_data["metadata"] = {}
-
-        # Add meeting date
-        if meeting_record.get("created_at"):
-            summary_data["metadata"]["meeting_date"] = meeting_record["created_at"][:10]
-
-        # Add instructor name
-        if meeting_record.get("instructor_name"):
-            summary_data["metadata"]["instructor"] = meeting_record["instructor_name"]
-
-        with open(summary_file, "w") as f:
-            json.dump(summary_data, f, indent=2)
-
-    def _upload_outputs(
-        self,
-        meeting_id: str,
-        transcript_file: str,
-        combined_file: str,
-        chunks_file: str,
-        summary_file: str,
-        study_guide_file: str,
-        pdf_file: str | None,
-        upload_intermediate: bool,
-    ) -> dict:
-        """
-        Upload output files to storage.
-
-        Args:
-            meeting_id: Meeting ID
-            transcript_file: Raw transcript file path
-            combined_file: Combined transcript file path
-            chunks_file: Chunks file path
-            summary_file: Summary file path
-            study_guide_file: Study guide markdown file path
-            pdf_file: PDF file path (or None if generation failed)
-            upload_intermediate: Whether to upload intermediate files
-
-        Returns:
-            dict: Output file paths by name
-        """
-        outputs = {}
-
-        # Always upload final outputs
-        files_to_upload = [
-            ("transcript", transcript_file),
-            ("summary", summary_file),
-            ("study_guide_md", study_guide_file),
-        ]
-
-        # Optionally upload intermediate files
-        if upload_intermediate:
-            files_to_upload.extend(
-                [
-                    ("transcript_combined", combined_file),
-                    ("transcript_chunks", chunks_file),
-                ]
-            )
-
-        # Add PDF if it exists
-        if pdf_file and os.path.exists(pdf_file):
-            files_to_upload.append(("study_guide_pdf", pdf_file))
-
-        # Upload all files
-        for name, local_path in files_to_upload:
-            if os.path.exists(local_path):
-                filename = os.path.basename(local_path)
-                stored_path = self.storage.save_file_from_path(
-                    meeting_id, filename, local_path
-                )
-                outputs[name] = stored_path
-                print(f"   ✅ Uploaded: {filename}")
 
         return outputs
 

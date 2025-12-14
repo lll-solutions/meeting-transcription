@@ -22,9 +22,23 @@ def mock_storage() -> MagicMock:
 
 
 @pytest.fixture
-def service(mock_storage: MagicMock) -> TranscriptService:
-    """TranscriptService instance with mocked storage."""
-    return TranscriptService(storage=mock_storage, llm_provider="test_provider")
+def mock_plugin() -> MagicMock:
+    """Mock plugin instance."""
+    plugin = MagicMock()
+    plugin.display_name = "Test Plugin"
+    plugin.process_transcript.return_value = {
+        "summary": "/tmp/summary.json",
+        "study_guide_md": "/tmp/guide.md",
+        "study_guide_pdf": "/tmp/guide.pdf",
+        "chunks": "/tmp/chunks.json",
+    }
+    return plugin
+
+
+@pytest.fixture
+def service(mock_storage: MagicMock, mock_plugin: MagicMock) -> TranscriptService:
+    """TranscriptService instance with mocked storage and plugin."""
+    return TranscriptService(storage=mock_storage, plugin=mock_plugin, llm_provider="test_provider")
 
 
 @pytest.fixture
@@ -47,25 +61,16 @@ class TestProcessRecallTranscript:
     """Tests for process_recall_transcript method."""
 
     @patch("os.path.exists")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("src.services.transcript_service.markdown_to_pdf")
-    @patch("src.services.transcript_service.create_study_guide")
-    @patch("src.services.transcript_service.summarize_educational_content")
-    @patch("src.services.transcript_service.create_educational_chunks")
-    @patch("src.services.transcript_service.combine_transcript_words")
+    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("src.services.transcript_service.download_transcript")
     def test_process_recall_transcript_success(
         self,
         mock_download: MagicMock,
         mock_combine: MagicMock,
-        mock_chunks: MagicMock,
-        mock_summarize: MagicMock,
-        mock_study_guide: MagicMock,
-        mock_pdf: MagicMock,
-        mock_file: MagicMock,
         mock_exists: MagicMock,
         service: TranscriptService,
         mock_storage: MagicMock,
+        mock_plugin: MagicMock,
         sample_meeting_dict: dict,
     ) -> None:
         """Successfully process a Recall API transcript."""
@@ -76,19 +81,11 @@ class TestProcessRecallTranscript:
             f"gs://bucket/{mid}/{fname}"
         )
 
-        summary_data = {"content": "test"}
-        mock_file.return_value.__enter__.return_value.read.return_value = json.dumps(
-            summary_data
-        )
-
         service.process_recall_transcript("transcript-456", "recording-789")
 
         mock_download.assert_called_once()
-        mock_combine.combine_transcript_words.assert_called_once()
-        mock_chunks.create_educational_content_chunks.assert_called_once()
-        mock_summarize.summarize_educational_content.assert_called_once()
-        mock_study_guide.create_markdown_study_guide.assert_called_once()
-        mock_pdf.convert_markdown_to_pdf.assert_called_once()
+        mock_combine.assert_called_once()
+        mock_plugin.process_transcript.assert_called_once()
 
         assert mock_storage.update_meeting.call_count >= 2
         mock_storage.update_meeting.assert_any_call(
@@ -124,7 +121,7 @@ class TestProcessRecallTranscript:
         assert error_calls[0][0][1]["status"] == "failed"
         assert "error" in error_calls[0][0][1]
 
-    @patch("src.services.transcript_service.combine_transcript_words")
+    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("src.services.transcript_service.download_transcript")
     def test_process_recall_transcript_pipeline_failure(
         self,
@@ -136,7 +133,7 @@ class TestProcessRecallTranscript:
     ) -> None:
         """Handle pipeline processing failure."""
         mock_download.return_value = True
-        mock_combine.combine_transcript_words.side_effect = Exception("Pipeline error")
+        mock_combine.side_effect = Exception("Pipeline error")
         mock_storage.list_meetings.return_value = [sample_meeting_dict]
 
         with pytest.raises(Exception, match="Pipeline error"):
@@ -148,57 +145,48 @@ class TestProcessRecallTranscript:
         assert len(error_calls) > 0
         assert error_calls[0][0][1]["status"] == "failed"
 
-    @patch("src.services.transcript_service.markdown_to_pdf")
-    @patch("src.services.transcript_service.create_study_guide")
-    @patch("src.services.transcript_service.summarize_educational_content")
-    @patch("src.services.transcript_service.create_educational_chunks")
-    @patch("src.services.transcript_service.combine_transcript_words")
+    @patch("os.path.exists")
+    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("src.services.transcript_service.download_transcript")
-    @patch("builtins.open", new_callable=mock_open)
     def test_process_recall_transcript_with_metadata_patching(
         self,
-        mock_file: MagicMock,
         mock_download: MagicMock,
         mock_combine: MagicMock,
-        mock_chunks: MagicMock,
-        mock_summarize: MagicMock,
-        mock_study_guide: MagicMock,
-        mock_pdf: MagicMock,
+        mock_exists: MagicMock,
         service: TranscriptService,
         mock_storage: MagicMock,
+        mock_plugin: MagicMock,
         sample_meeting_dict: dict,
     ) -> None:
-        """Successfully patch summary with meeting metadata."""
+        """Successfully pass meeting metadata to plugin."""
         mock_download.return_value = True
+        mock_exists.return_value = True
         mock_storage.list_meetings.return_value = [sample_meeting_dict]
         mock_storage.save_file_from_path.return_value = "gs://bucket/file"
 
-        summary_data = {"content": "test"}
-        mock_file.return_value.read.return_value = json.dumps(summary_data)
-
         service.process_recall_transcript("transcript-456")
 
-        assert mock_file.call_count >= 2
+        # Verify plugin was called with metadata
+        mock_plugin.process_transcript.assert_called_once()
+        call_kwargs = mock_plugin.process_transcript.call_args[1]
+        assert "metadata" in call_kwargs
+        assert call_kwargs["metadata"] == sample_meeting_dict
 
-    @patch("src.services.transcript_service.markdown_to_pdf")
-    @patch("src.services.transcript_service.create_study_guide")
-    @patch("src.services.transcript_service.summarize_educational_content")
-    @patch("src.services.transcript_service.create_educational_chunks")
-    @patch("src.services.transcript_service.combine_transcript_words")
+    @patch("os.path.exists")
+    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("src.services.transcript_service.download_transcript")
     def test_process_recall_transcript_uses_recording_id_when_meeting_not_found(
         self,
         mock_download: MagicMock,
         mock_combine: MagicMock,
-        mock_chunks: MagicMock,
-        mock_summarize: MagicMock,
-        mock_study_guide: MagicMock,
-        mock_pdf: MagicMock,
+        mock_exists: MagicMock,
         service: TranscriptService,
         mock_storage: MagicMock,
+        mock_plugin: MagicMock,
     ) -> None:
         """Process transcript using recording_id as fallback when meeting not found."""
         mock_download.return_value = True
+        mock_exists.return_value = True
         mock_storage.list_meetings.return_value = []
         mock_storage.save_file_from_path.return_value = "gs://bucket/file"
 
