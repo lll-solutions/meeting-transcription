@@ -465,41 +465,32 @@ def verify_webhook(f):
 
 
 def verify_oidc_token(token: str, expected_audience: str) -> bool:
-    """
-    Verify OIDC token from Google Cloud Tasks.
-
-    Args:
-        token: Bearer token from Authorization header
-        expected_audience: Expected audience (service URL)
-
-    Returns:
-        bool: True if token is valid
-    """
+    """Verify OIDC token from Google Cloud Tasks matches our service account."""
     try:
         from google.auth.transport import requests as google_requests
         from google.oauth2 import id_token
 
-        # Verify the token
-        # Cloud Tasks sends OIDC tokens signed by Google
         request_adapter = google_requests.Request()
+        claims = id_token.verify_oauth2_token(token, request_adapter, audience=expected_audience)
 
-        # Verify and decode the token
-        claims = id_token.verify_oauth2_token(
-            token,
-            request_adapter,
-            audience=expected_audience
-        )
-
-        # Validate issuer is Google
         if claims.get('iss') not in ['https://accounts.google.com', 'accounts.google.com']:
             print(f"❌ Invalid token issuer: {claims.get('iss')}")
             return False
 
-        # Validate email is a service account
         email = claims.get('email', '')
         if not email.endswith('.gserviceaccount.com'):
             print(f"❌ Token not from service account: {email}")
             return False
+
+        # Verify it's OUR project's service account (not any random Google SA)
+        project_number = os.getenv("GCP_PROJECT_NUMBER")
+        if project_number:
+            expected_email = f"{project_number}-compute@developer.gserviceaccount.com"
+            if email != expected_email:
+                print(f"❌ Token from wrong service account")
+                print(f"   Expected: {expected_email}")
+                print(f"   Got: {email}")
+                return False
 
         print(f"✅ Valid OIDC token from: {email}")
         return True
@@ -513,53 +504,30 @@ def verify_oidc_token(token: str, expected_audience: str) -> bool:
 
 
 def verify_cloud_tasks(f):
-    """
-    Decorator to verify requests come from Google Cloud Tasks.
-
-    Verifies Cloud Tasks OIDC token in Authorization header.
-    Cloud Tasks automatically sends OIDC tokens when configured with oidc_token.
-
-    Secure by default: Only allows bypass in development mode (ENV=development).
-    """
+    """Verify requests come from Google Cloud Tasks via OIDC token."""
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         is_development = os.getenv("ENV", "").lower() == "development"
-
-        # Get Authorization header
         auth_header = request.headers.get("Authorization", "")
 
         if not auth_header.startswith("Bearer "):
             if not is_development:
-                # Production: require OIDC token
                 print("❌ Missing Cloud Tasks OIDC token - rejecting")
                 return jsonify({"error": "Unauthorized - missing OIDC token"}), 401
-            else:
-                # Development: allow but warn
-                print("⚠️ Missing Cloud Tasks OIDC token - allowing in dev mode")
-                g.user = "cloud-tasks"
-                return f(*args, **kwargs)
+            print("⚠️ Missing Cloud Tasks OIDC token - allowing in dev mode")
+            g.user = "cloud-tasks"
+            return f(*args, **kwargs)
 
-        # Extract token
-        token = auth_header[7:]  # Remove "Bearer " prefix
+        token = auth_header[7:]
+        service_url = os.getenv("SERVICE_URL") or f"{request.scheme}://{request.host}"
 
-        # Get expected audience (service URL)
-        service_url = os.getenv("SERVICE_URL")
-        if not service_url:
-            # Try to construct from request
-            service_url = f"{request.scheme}://{request.host}"
-
-        # Verify OIDC token
         if not verify_oidc_token(token, service_url):
             if not is_development:
                 print("❌ Invalid Cloud Tasks OIDC token - rejecting")
                 return jsonify({"error": "Unauthorized - invalid OIDC token"}), 401
-            else:
-                print("⚠️ Invalid OIDC token - allowing in dev mode")
+            print("⚠️ Invalid OIDC token - allowing in dev mode")
 
-        # Also check for Cloud Tasks headers as additional verification
         task_name = request.headers.get("X-CloudTasks-TaskName")
-        queue_name = request.headers.get("X-CloudTasks-QueueName")
-
         g.user = "cloud-tasks"
         print(f"✅ Cloud Tasks request verified: {task_name or 'unknown task'}")
         return f(*args, **kwargs)
