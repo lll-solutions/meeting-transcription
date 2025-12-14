@@ -279,19 +279,26 @@ def get_config() -> AuthConfig:
 def authenticate_request() -> Tuple[Optional[User], Optional[str]]:
     """
     Authenticate the current request using available providers.
-    
+
+    Checks (in order):
+    1. httpOnly cookie (most secure)
+    2. Authorization header (for API clients)
+    3. API key header/query param
+
     Returns:
         tuple: (User, provider_name) or (None, None) if not authenticated
     """
     config = get_config()
-    
-    # Get token from Authorization header
-    auth_header = request.headers.get("Authorization", "")
-    token = None
-    
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-    
+
+    # Get token from httpOnly cookie (preferred - XSS protection)
+    token = request.cookies.get("auth_token")
+
+    # Fallback to Authorization header (for API clients, backward compatibility)
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+
     # Try DB Auth (if configured)
     if token and "db" in _providers:
         user = _providers["db"].verify_token(token)
@@ -303,14 +310,14 @@ def authenticate_request() -> Tuple[Optional[User], Optional[str]]:
         user = _providers["firebase"].verify_token(token)
         if user:
             return user, "firebase"
-    
+
     # Try API Key
     api_key = request.headers.get("X-API-Key") or request.args.get("api_key")
     if api_key and "api_key" in _providers:
         user = _providers["api_key"].verify_token(api_key)
         if user:
             return user, "api_key"
-    
+
     return None, None
 
 
@@ -457,12 +464,60 @@ def verify_webhook(f):
     return decorated
 
 
+def verify_oidc_token(token: str, expected_audience: str) -> bool:
+    """
+    Verify OIDC token from Google Cloud Tasks.
+
+    Args:
+        token: Bearer token from Authorization header
+        expected_audience: Expected audience (service URL)
+
+    Returns:
+        bool: True if token is valid
+    """
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token
+
+        # Verify the token
+        # Cloud Tasks sends OIDC tokens signed by Google
+        request_adapter = google_requests.Request()
+
+        # Verify and decode the token
+        claims = id_token.verify_oauth2_token(
+            token,
+            request_adapter,
+            audience=expected_audience
+        )
+
+        # Validate issuer is Google
+        if claims.get('iss') not in ['https://accounts.google.com', 'accounts.google.com']:
+            print(f"❌ Invalid token issuer: {claims.get('iss')}")
+            return False
+
+        # Validate email is a service account
+        email = claims.get('email', '')
+        if not email.endswith('.gserviceaccount.com'):
+            print(f"❌ Token not from service account: {email}")
+            return False
+
+        print(f"✅ Valid OIDC token from: {email}")
+        return True
+
+    except ValueError as e:
+        print(f"❌ Token verification failed: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ OIDC verification error: {e}")
+        return False
+
+
 def verify_cloud_tasks(f):
     """
     Decorator to verify requests come from Google Cloud Tasks.
 
-    Verifies Cloud Tasks headers (X-CloudTasks-TaskName, X-CloudTasks-QueueName).
-    Cloud Tasks automatically sends these headers - no extra configuration needed.
+    Verifies Cloud Tasks OIDC token in Authorization header.
+    Cloud Tasks automatically sends OIDC tokens when configured with oidc_token.
 
     Secure by default: Only allows bypass in development mode (ENV=development).
     """
@@ -470,23 +525,43 @@ def verify_cloud_tasks(f):
     def decorated(*args, **kwargs):
         is_development = os.getenv("ENV", "").lower() == "development"
 
-        # Check for Cloud Tasks headers (automatically sent by Cloud Tasks)
-        task_name = request.headers.get("X-CloudTasks-TaskName")
-        queue_name = request.headers.get("X-CloudTasks-QueueName")
+        # Get Authorization header
+        auth_header = request.headers.get("Authorization", "")
 
-        if not task_name and not queue_name:
+        if not auth_header.startswith("Bearer "):
             if not is_development:
-                # Production (default): reject requests without Cloud Tasks headers
-                print("❌ Missing Cloud Tasks headers - rejecting (not from Cloud Tasks)")
-                return jsonify({"error": "Unauthorized - not from Cloud Tasks"}), 401
+                # Production: require OIDC token
+                print("❌ Missing Cloud Tasks OIDC token - rejecting")
+                return jsonify({"error": "Unauthorized - missing OIDC token"}), 401
             else:
                 # Development: allow but warn
-                print("⚠️ Missing Cloud Tasks headers - allowing in dev mode")
+                print("⚠️ Missing Cloud Tasks OIDC token - allowing in dev mode")
                 g.user = "cloud-tasks"
                 return f(*args, **kwargs)
 
+        # Extract token
+        token = auth_header[7:]  # Remove "Bearer " prefix
+
+        # Get expected audience (service URL)
+        service_url = os.getenv("SERVICE_URL")
+        if not service_url:
+            # Try to construct from request
+            service_url = f"{request.scheme}://{request.host}"
+
+        # Verify OIDC token
+        if not verify_oidc_token(token, service_url):
+            if not is_development:
+                print("❌ Invalid Cloud Tasks OIDC token - rejecting")
+                return jsonify({"error": "Unauthorized - invalid OIDC token"}), 401
+            else:
+                print("⚠️ Invalid OIDC token - allowing in dev mode")
+
+        # Also check for Cloud Tasks headers as additional verification
+        task_name = request.headers.get("X-CloudTasks-TaskName")
+        queue_name = request.headers.get("X-CloudTasks-QueueName")
+
         g.user = "cloud-tasks"
-        print(f"✅ Cloud Tasks request verified: {task_name}")
+        print(f"✅ Cloud Tasks request verified: {task_name or 'unknown task'}")
         return f(*args, **kwargs)
 
     return decorated
