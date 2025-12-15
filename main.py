@@ -710,7 +710,7 @@ def get_meeting(meeting_id):
     if not meeting:
         return jsonify({"error": "Meeting not found"}), 404
 
-    return jsonify(meeting)
+    return jsonify(meeting.to_dict())
 
 
 @app.route('/api/meetings/<meeting_id>', methods=['DELETE'])
@@ -762,15 +762,15 @@ def get_meeting_outputs(meeting_id):
     if not meeting:
         return jsonify({"error": "Meeting not found"}), 404
 
-    if meeting['status'] != 'completed':
+    if meeting.status != 'completed':
         return jsonify({
-            "status": meeting['status'],
+            "status": meeting.status,
             "message": "Meeting not yet completed or still processing"
         })
 
     # Get download URLs for outputs
     outputs = {}
-    for name, path in meeting.get('outputs', {}).items():
+    for name, path in meeting.outputs.items():
         filename = os.path.basename(path)
         url = storage.get_download_url(meeting_id, filename)
         outputs[name] = url
@@ -790,6 +790,10 @@ def download_output(meeting_id, filename):
     meeting = meeting_service.get_meeting(meeting_id)
     if not meeting:
         return jsonify({"error": "Meeting not found"}), 404
+
+    # Verify user owns this meeting (unless anonymous mode is enabled)
+    if g.user != 'anonymous' and meeting.user != g.user:
+        return jsonify({"error": "Forbidden - you don't have access to this meeting"}), 403
 
     # Fetch file content from storage (GCS or local)
     content = storage.get_file(meeting_id, filename)
