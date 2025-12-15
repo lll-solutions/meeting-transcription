@@ -38,6 +38,14 @@ from src.services.transcript_service import TranscriptService
 from src.services.webhook_service import WebhookService
 from src.utils.url_validator import UrlValidator
 
+# Import plugin system
+from src.plugins import register_plugin, get_plugin
+from src.plugins.educational_plugin import EducationalPlugin
+
+# Register built-in plugins
+register_plugin(EducationalPlugin())
+print(f"✅ Registered educational plugin")
+
 app = Flask(__name__, static_folder='static')
 
 # Configure for large file uploads (50MB limit)
@@ -45,6 +53,26 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 # Initialize authentication
 init_auth(app)
+
+# Initialize rate limiting (security against brute force and DoS)
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+# For Cloud Run, use Redis/Memorystore for shared state across instances
+# Set RATE_LIMIT_STORAGE_URI to redis://[host]:[port] in production
+# Falls back to memory:// for development (not shared across instances)
+rate_limit_uri = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
+if rate_limit_uri == "memory://":
+    print("⚠️  WARNING: Rate limiting using in-memory storage. Not shared across Cloud Run instances!")
+    print("   Set RATE_LIMIT_STORAGE_URI=redis://[host]:[port] for production")
+
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri=rate_limit_uri,
+    strategy="fixed-window"
+)
 
 # Add Jinja filter for timezone formatting
 @app.template_filter('format_user_time')
@@ -103,11 +131,78 @@ storage = MeetingStorage(bucket_name=OUTPUT_BUCKET, local_dir=OUTPUT_DIR)
 
 # Initialize services
 meeting_service = MeetingService(storage=storage)
-transcript_service = TranscriptService(storage=storage, llm_provider=os.getenv('LLM_PROVIDER', 'vertex_ai'))
+
+# Create a default transcript service for utility methods (queuing, etc.)
+# Plugin is optional - only needed for processing methods
+_default_transcript_service = None
+
+
+def get_default_transcript_service() -> TranscriptService:
+    """
+    Get default transcript service for utility methods (queuing, etc.).
+
+    This service doesn't have a plugin set, so it can only be used for
+    utility methods like queue_uploaded_transcript(), not for processing.
+    """
+    global _default_transcript_service
+    if _default_transcript_service is None:
+        _default_transcript_service = TranscriptService(
+            storage=storage,
+            plugin=None,  # No plugin needed for utility methods
+            llm_provider=os.getenv('LLM_PROVIDER', 'vertex_ai')
+        )
+    return _default_transcript_service
+
+
+def get_transcript_service_for_meeting(meeting_id: str | None = None) -> TranscriptService:
+    """
+    Create TranscriptService with appropriate plugin for a meeting.
+
+    Args:
+        meeting_id: Meeting ID to get plugin for (uses 'educational' if None)
+
+    Returns:
+        TranscriptService instance configured with the appropriate plugin
+    """
+    # Get meeting data to determine plugin
+    plugin_name = 'educational'  # Default
+
+    if meeting_id:
+        meeting = storage.get_meeting(meeting_id)
+        if meeting:
+            plugin_name = meeting.get('plugin', 'educational')
+
+    # Get plugin instance
+    plugin = get_plugin(plugin_name)
+
+    # TODO: Load and apply user settings for this plugin
+    # user_settings = get_user_plugin_settings(user_id, plugin_name)
+    # meeting_settings = meeting.get('plugin_settings', {})
+    # plugin.configure({**user_settings, **meeting_settings})
+
+    # Create service with plugin
+    return TranscriptService(
+        storage=storage,
+        plugin=plugin,
+        llm_provider=os.getenv('LLM_PROVIDER', 'vertex_ai')
+    )
 
 
 def process_transcript_callback(transcript_id: str, recording_id: str | None = None) -> None:
     """Callback for WebhookService to process transcripts."""
+    # Find meeting for this transcript to get the right plugin
+    meeting_id = None
+    meetings_list = storage.list_meetings()
+    for meeting in meetings_list:
+        if meeting.get('transcript_id') == transcript_id:
+            meeting_id = meeting['id']
+            break
+
+    if not meeting_id:
+        meeting_id = recording_id or transcript_id
+
+    # Create service with appropriate plugin
+    transcript_service = get_transcript_service_for_meeting(meeting_id)
     transcript_service.process_recall_transcript(transcript_id, recording_id)
 
 
@@ -293,10 +388,11 @@ def api_info():
 # =============================================================================
 
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("5 per minute")  # Strict rate limit to prevent brute force
 def login():
     """
     Login with email and password.
-    Returns a JWT token.
+    Sets httpOnly secure cookie and returns JWT token (for backward compatibility).
     """
     try:
         data = request.json
@@ -312,10 +408,26 @@ def login():
 
         token = service.create_token(user)
 
-        return jsonify({
+        # Create response
+        response = jsonify({
             "token": token,
             "user": user.to_dict()
         })
+
+        # Set httpOnly, secure cookie for enhanced security
+        # This protects against XSS attacks (localStorage is vulnerable to XSS)
+        is_production = os.getenv("ENV", "production").lower() != "development"
+
+        response.set_cookie(
+            'auth_token',
+            token,
+            httponly=True,      # Cannot be accessed via JavaScript (XSS protection)
+            secure=is_production,  # HTTPS only in production
+            samesite='Lax',     # CSRF protection
+            max_age=7*24*60*60  # 7 days (matches JWT expiration)
+        )
+
+        return response
     except Exception as e:
         print(f"Login error: {e}")
         import traceback
@@ -323,7 +435,28 @@ def login():
         return jsonify({"error": f"Login failed: {e!s}"}), 500
 
 
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    """
+    Logout the current user by clearing the auth cookie.
+    """
+    response = jsonify({"message": "Logged out successfully"})
+
+    # Clear the auth cookie
+    response.set_cookie(
+        'auth_token',
+        '',
+        httponly=True,
+        secure=os.getenv("ENV", "production").lower() != "development",
+        samesite='Lax',
+        max_age=0  # Expire immediately
+    )
+
+    return response
+
+
 @app.route('/api/auth/setup', methods=['POST'])
+@limiter.limit("3 per hour")  # Very strict - setup should be rare
 def setup_admin():
     """
     Create the initial admin user.
@@ -501,6 +634,7 @@ def update_current_user():
 
 @app.route('/api/scheduled-meetings', methods=['POST'])
 @require_auth
+@limiter.limit("20 per hour")  # Allow reasonable scheduling activity
 def create_scheduled_meeting():
     """
     Schedule a bot to join a meeting at a specific time.
@@ -631,11 +765,93 @@ def execute_scheduled_meetings():
 
 
 # =============================================================================
+# PLUGIN ROUTES
+# =============================================================================
+
+@app.route('/api/plugins', methods=['GET'])
+def list_available_plugins():
+    """
+    List all registered plugins.
+
+    Returns:
+        200: List of available plugins with their metadata
+
+    Example response:
+    [
+        {
+            "name": "educational",
+            "display_name": "Educational Class",
+            "description": "Generate study guides from classes..."
+        },
+        {
+            "name": "therapy",
+            "display_name": "Therapy Session",
+            "description": "Generate SOAP notes for therapy..."
+        }
+    ]
+    """
+    from src.plugins import list_plugins
+
+    plugins = list_plugins()
+    return jsonify(plugins)
+
+
+@app.route('/api/plugins/<plugin_name>', methods=['GET'])
+def get_plugin_details(plugin_name: str):
+    """
+    Get detailed information about a specific plugin.
+
+    Args:
+        plugin_name: Plugin identifier (e.g., 'educational', 'therapy')
+
+    Returns:
+        200: Plugin details including metadata and settings schemas
+        404: Plugin not found
+
+    Example response:
+    {
+        "name": "therapy",
+        "display_name": "Therapy Session",
+        "description": "Generate SOAP notes...",
+        "metadata_schema": {
+            "session_type": {
+                "type": "select",
+                "options": ["individual", "couples", "family", "group"],
+                "required": true
+            }
+        },
+        "settings_schema": {
+            "soap_format": {
+                "type": "select",
+                "options": ["standard", "brief", "narrative"],
+                "default": "standard"
+            }
+        }
+    }
+    """
+    from src.plugins import get_plugin, has_plugin
+
+    if not has_plugin(plugin_name):
+        return jsonify({"error": f"Plugin '{plugin_name}' not found"}), 404
+
+    plugin = get_plugin(plugin_name)
+
+    return jsonify({
+        "name": plugin.name,
+        "display_name": plugin.display_name,
+        "description": plugin.description,
+        "metadata_schema": plugin.metadata_schema,
+        "settings_schema": plugin.settings_schema
+    })
+
+
+# =============================================================================
 # MEETING ROUTES
 # =============================================================================
 
 @app.route('/api/meetings', methods=['POST'])
 @require_auth
+@limiter.limit("10 per hour")  # Limit meeting creation to prevent abuse
 def create_meeting():
     """
     Create a bot to join a meeting.
@@ -779,12 +995,13 @@ def get_meeting_outputs(meeting_id):
 
 
 @app.route('/api/meetings/<meeting_id>/outputs/<filename>', methods=['GET'])
+@require_auth
 def download_output(meeting_id, filename):
     """
     Download a specific output file.
 
     Fetches from GCS and serves directly through Flask.
-    No auth required - meeting IDs are UUIDs (hard to guess).
+    Requires authentication - verifies user owns the meeting.
     """
     # Check if meeting exists
     meeting = meeting_service.get_meeting(meeting_id)
@@ -819,6 +1036,7 @@ def download_output(meeting_id, filename):
 
 @app.route('/api/transcripts/upload', methods=['POST'])
 @require_auth
+@limiter.limit("10 per hour")  # Limit uploads to prevent abuse
 def upload_transcript():
     """
     Upload a transcript JSON file and process it through the LLM pipeline.
@@ -845,7 +1063,7 @@ def upload_transcript():
 
     # Use TranscriptService to queue the upload
     try:
-        meeting_id, used_title = transcript_service.queue_uploaded_transcript(
+        meeting_id, used_title = get_default_transcript_service().queue_uploaded_transcript(
             user=g.user,
             transcript_data=transcript_data,
             title=title,
@@ -882,7 +1100,7 @@ def process_transcript_task(meeting_id: str):
 
     # Use TranscriptService to fetch from GCS and process
     try:
-        transcript_service.fetch_and_process_uploaded(meeting_id, title)
+        get_transcript_service_for_meeting(meeting_id).fetch_and_process_uploaded(meeting_id, title)
         print(f"✅ Processing completed for {meeting_id}", flush=True)
         return jsonify({"status": "completed", "meeting_id": meeting_id}), 200
     except ValueError as e:
@@ -920,7 +1138,7 @@ def process_recall_transcript_task(meeting_id: str):
 
     # Use TranscriptService to process the transcript
     try:
-        transcript_service.process_recall_transcript(transcript_id, recording_id)
+        get_transcript_service_for_meeting(meeting_id).process_recall_transcript(transcript_id, recording_id)
         print(f"✅ Recall transcript processing completed for {meeting_id}", flush=True)
         return jsonify({"status": "completed", "meeting_id": meeting_id}), 200
     except Exception as e:
@@ -944,7 +1162,7 @@ def reprocess_meeting(meeting_id: str):
 
     # Use TranscriptService to reprocess (handles both Recall and uploaded transcripts)
     try:
-        transcript_type = transcript_service.reprocess_transcript(meeting_id)
+        transcript_type = get_transcript_service_for_meeting(meeting_id).reprocess_transcript(meeting_id)
         print(f"✅ Reprocessing completed for {meeting_id}", flush=True)
         return jsonify({
             "status": "completed",

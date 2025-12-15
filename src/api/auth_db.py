@@ -23,10 +23,26 @@ except ImportError:
     HAS_FIRESTORE = False
 
 # Secret key for JWT signing
-# In production, this should be loaded from a secret manager
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-key-change-me")
+# SECURITY: JWT_SECRET is REQUIRED in production
+JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24 * 7  # 1 week
+
+# Validate JWT_SECRET is set (critical for security)
+# Allow bypass only in explicit development mode
+IS_DEVELOPMENT = os.getenv("ENV", "").lower() == "development"
+
+if not JWT_SECRET:
+    if not IS_DEVELOPMENT:
+        raise RuntimeError(
+            "CRITICAL SECURITY ERROR: JWT_SECRET environment variable is not set. "
+            "This is required for production deployments. "
+            "Generate a secure secret with: python -c 'import secrets; print(secrets.token_urlsafe(32))' "
+            "and set it as JWT_SECRET environment variable."
+        )
+    else:
+        print("⚠️  WARNING: Using default JWT_SECRET in development mode. DO NOT use in production!")
+        JWT_SECRET = "dev-secret-key-change-me-INSECURE"
 
 class User:
     """User model."""

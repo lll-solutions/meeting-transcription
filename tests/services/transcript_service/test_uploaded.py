@@ -21,9 +21,23 @@ def mock_storage() -> MagicMock:
 
 
 @pytest.fixture
-def service(mock_storage: MagicMock) -> TranscriptService:
-    """TranscriptService instance with mocked storage."""
-    return TranscriptService(storage=mock_storage, llm_provider="test_provider")
+def mock_plugin() -> MagicMock:
+    """Mock plugin instance."""
+    plugin = MagicMock()
+    plugin.display_name = "Test Plugin"
+    plugin.process_transcript.return_value = {
+        "summary": "/tmp/summary.json",
+        "study_guide_md": "/tmp/guide.md",
+        "study_guide_pdf": "/tmp/guide.pdf",
+        "chunks": "/tmp/chunks.json",
+    }
+    return plugin
+
+
+@pytest.fixture
+def service(mock_storage: MagicMock, mock_plugin: MagicMock) -> TranscriptService:
+    """TranscriptService instance with mocked storage and plugin."""
+    return TranscriptService(storage=mock_storage, plugin=mock_plugin, llm_provider="test_provider")
 
 
 @pytest.fixture
@@ -43,25 +57,21 @@ def sample_transcript_data() -> list:
 class TestProcessUploadedTranscript:
     """Tests for process_uploaded_transcript method."""
 
-    @patch("src.services.transcript_service.markdown_to_pdf")
-    @patch("src.services.transcript_service.create_study_guide")
-    @patch("src.services.transcript_service.summarize_educational_content")
-    @patch("src.services.transcript_service.create_educational_chunks")
-    @patch("src.services.transcript_service.combine_transcript_words")
+    @patch("os.path.exists")
+    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("builtins.open", new_callable=mock_open)
     def test_process_uploaded_transcript_success(
         self,
         mock_file: MagicMock,
         mock_combine: MagicMock,
-        mock_chunks: MagicMock,
-        mock_summarize: MagicMock,
-        mock_study_guide: MagicMock,
-        mock_pdf: MagicMock,
+        mock_exists: MagicMock,
         service: TranscriptService,
         mock_storage: MagicMock,
+        mock_plugin: MagicMock,
         sample_transcript_data: list,
     ) -> None:
         """Successfully process an uploaded transcript."""
+        mock_exists.return_value = True
         mock_storage.save_file_from_path.side_effect = lambda mid, fname, fpath: (
             f"gs://bucket/{mid}/{fname}"
         )
@@ -73,11 +83,8 @@ class TestProcessUploadedTranscript:
         assert "outputs" in result
         assert isinstance(result["outputs"], dict)
 
-        mock_combine.combine_transcript_words.assert_called_once()
-        mock_chunks.create_educational_content_chunks.assert_called_once()
-        mock_summarize.summarize_educational_content.assert_called_once()
-        mock_study_guide.create_markdown_study_guide.assert_called_once()
-        mock_pdf.convert_markdown_to_pdf.assert_called_once()
+        mock_combine.assert_called_once()
+        mock_plugin.process_transcript.assert_called_once()
 
         mock_storage.update_meeting.assert_any_call(
             "meeting-123", {"status": "processing"}
@@ -86,25 +93,21 @@ class TestProcessUploadedTranscript:
         final_call = mock_storage.update_meeting.call_args_list[-1]
         assert final_call[0][1]["status"] == "completed"
 
-    @patch("src.services.transcript_service.markdown_to_pdf")
-    @patch("src.services.transcript_service.create_study_guide")
-    @patch("src.services.transcript_service.summarize_educational_content")
-    @patch("src.services.transcript_service.create_educational_chunks")
-    @patch("src.services.transcript_service.combine_transcript_words")
+    @patch("os.path.exists")
+    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("builtins.open", new_callable=mock_open)
     def test_process_uploaded_transcript_with_title(
         self,
         mock_file: MagicMock,
         mock_combine: MagicMock,
-        mock_chunks: MagicMock,
-        mock_summarize: MagicMock,
-        mock_study_guide: MagicMock,
-        mock_pdf: MagicMock,
+        mock_exists: MagicMock,
         service: TranscriptService,
         mock_storage: MagicMock,
+        mock_plugin: MagicMock,
         sample_transcript_data: list,
     ) -> None:
         """Process uploaded transcript with title."""
+        mock_exists.return_value = True
         mock_storage.save_file_from_path.return_value = "gs://bucket/file"
 
         result = service.process_uploaded_transcript(
@@ -122,23 +125,16 @@ class TestProcessUploadedTranscript:
         assert title_calls[0][0][1]["title"] == "My Lecture"
 
     @patch("os.path.exists")
-    @patch("src.services.transcript_service.markdown_to_pdf")
-    @patch("src.services.transcript_service.create_study_guide")
-    @patch("src.services.transcript_service.summarize_educational_content")
-    @patch("src.services.transcript_service.create_educational_chunks")
-    @patch("src.services.transcript_service.combine_transcript_words")
+    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("builtins.open", new_callable=mock_open)
     def test_process_uploaded_transcript_uploads_intermediate_files(
         self,
         mock_file: MagicMock,
         mock_combine: MagicMock,
-        mock_chunks: MagicMock,
-        mock_summarize: MagicMock,
-        mock_study_guide: MagicMock,
-        mock_pdf: MagicMock,
         mock_exists: MagicMock,
         service: TranscriptService,
         mock_storage: MagicMock,
+        mock_plugin: MagicMock,
         sample_transcript_data: list,
     ) -> None:
         """Uploaded transcripts include intermediate files."""
@@ -160,7 +156,7 @@ class TestProcessUploadedTranscript:
         assert combined_present, f"Expected combined file in {uploaded_files}"
         assert chunks_present, f"Expected chunks file in {uploaded_files}"
 
-    @patch("src.services.transcript_service.combine_transcript_words")
+    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("builtins.open", new_callable=mock_open)
     def test_process_uploaded_transcript_pipeline_failure(
         self,
@@ -171,7 +167,7 @@ class TestProcessUploadedTranscript:
         sample_transcript_data: list,
     ) -> None:
         """Handle pipeline failure during uploaded transcript processing."""
-        mock_combine.combine_transcript_words.side_effect = Exception("Pipeline error")
+        mock_combine.side_effect = Exception("Pipeline error")
 
         with pytest.raises(Exception, match="Pipeline error"):
             service.process_uploaded_transcript("meeting-123", sample_transcript_data)

@@ -405,7 +405,7 @@ class MeetingStorage:
                     credentials, project = google.auth.default()
 
                     # Get service account email
-                    project_number = os.getenv('PROJECT_NUMBER')
+                    project_number = os.getenv('GCP_PROJECT_NUMBER')
                     if project_number:
                         service_account_email = f"{project_number}-compute@developer.gserviceaccount.com"
                     else:
