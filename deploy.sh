@@ -93,9 +93,19 @@ echo ""
 # =============================================================================
 SECRETS_STRING="RECALL_API_KEY=RECALL_API_KEY:latest"
 
+if gcloud secrets describe JWT_SECRET --quiet 2>/dev/null; then
+    SECRETS_STRING="${SECRETS_STRING},JWT_SECRET=JWT_SECRET:latest"
+
+    # Ensure permissions
+    gcloud secrets add-iam-policy-binding JWT_SECRET \
+        --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor" \
+        --quiet 2>/dev/null || true
+fi
+
 if gcloud secrets describe FIREBASE_API_KEY --quiet 2>/dev/null; then
     SECRETS_STRING="${SECRETS_STRING},FIREBASE_API_KEY=FIREBASE_API_KEY:latest"
-    
+
     # Ensure permissions
     gcloud secrets add-iam-policy-binding FIREBASE_API_KEY \
         --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \

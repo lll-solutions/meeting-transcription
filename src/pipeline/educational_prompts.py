@@ -221,7 +221,7 @@ Your task is to create a comprehensive educational summary in JSON format with t
   ],
 
   "unique_insights": [
-    "Counterintuitive advice, personal stories with lessons, or 'obvious but neglected' wisdom shared by the instructor"
+    "Counterintuitive advice, personal stories with lessons, or 'obvious but neglected' wisdom shared by the instructor. DEDUPLICATE aggressively - aim for 10-15 unique insights, not 40+."
   ],
 
   "next_steps": {{
@@ -232,7 +232,9 @@ Your task is to create a comprehensive educational summary in JSON format with t
 }}
 
 Important:
-- Consolidate duplicate concepts/topics from multiple chunks
+- **AGGRESSIVELY DEDUPLICATE**: If the same concept/practice/insight appears in multiple chunks with slightly different wording, consolidate it into ONE entry. Do NOT create separate entries for minor rewordings of the same idea.
+- For best_practices_learned: Aim for 8-12 UNIQUE practices maximum. If "write goals daily" appears 5 times, create ONE entry, not five.
+- For unique_insights: Aim for 10-15 UNIQUE insights maximum. Merge similar insights even if worded differently.
 - Maintain chronological flow where relevant
 - Highlight the most important concepts (mentioned multiple times or emphasized by instructor)
 - Make this useful as a study guide for students who attended OR missed the class
