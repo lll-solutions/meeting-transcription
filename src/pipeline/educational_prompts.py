@@ -26,24 +26,16 @@ Extract the following information in JSON format:
 4. **tools_frameworks**: Any tools, frameworks, or technologies mentioned
    - For each include: name, context (how it was discussed), use_case
 
-5. **best_practices**: Any recommendations, tips, or best practices shared
-
-6. **code_examples**: Any code examples or technical demonstrations mentioned
+5. **code_examples**: Any code examples or technical demonstrations mentioned
    - Include: topic, language (if specified), summary
 
-7. **assignments_tasks**: Any homework, assignments, or action items given
+6. **assignments_tasks**: Any homework, assignments, or action items given
 
-8. **resources**: Any articles, links, documentation, or resources mentioned
+7. **resources**: Any articles, links, documentation, or resources mentioned
 
-9. **unique_insights**: Distinctive insights or advice that are:
-   - Counterintuitive or surprising
-   - "Obvious but people don't do it" type wisdom
-   - Personal anecdotes or stories with lessons
-   - Specific techniques or approaches the instructor emphasizes
-   - Unique perspectives that differentiate this instructor's approach
-   - Each insight should be a complete, standalone statement
+8. **main_theme**: 1-2 sentence summary of what this chunk was primarily about
 
-10. **main_theme**: 1-2 sentence summary of what this chunk was primarily about
+Note: Best practices and unique insights will be extracted from the full transcript analysis, not per-chunk.
 
 Return ONLY valid JSON. If a category has no content, return an empty list/string.
 
@@ -80,10 +72,6 @@ Example response structure:
       "use_case": "Orchestrating LLM workflows"
     }}
   ],
-  "best_practices": [
-    "Validate retrieval quality before passing to LLM",
-    "Use hybrid search for better results"
-  ],
   "code_examples": [
     {{
       "topic": "Creating embeddings",
@@ -100,8 +88,7 @@ Example response structure:
       "name": "LangChain RAG Tutorial",
       "reference": "Shared in chat"
     }}
-  ],
-  "unique_insights": []
+  ]
 }}
 """
 
