@@ -26,24 +26,16 @@ Extract the following information in JSON format:
 4. **tools_frameworks**: Any tools, frameworks, or technologies mentioned
    - For each include: name, context (how it was discussed), use_case
 
-5. **best_practices**: Any recommendations, tips, or best practices shared
-
-6. **code_examples**: Any code examples or technical demonstrations mentioned
+5. **code_examples**: Any code examples or technical demonstrations mentioned
    - Include: topic, language (if specified), summary
 
-7. **assignments_tasks**: Any homework, assignments, or action items given
+6. **assignments_tasks**: Any homework, assignments, or action items given
 
-8. **resources**: Any articles, links, documentation, or resources mentioned
+7. **resources**: Any articles, links, documentation, or resources mentioned
 
-9. **unique_insights**: Distinctive insights or advice that are:
-   - Counterintuitive or surprising
-   - "Obvious but people don't do it" type wisdom
-   - Personal anecdotes or stories with lessons
-   - Specific techniques or approaches the instructor emphasizes
-   - Unique perspectives that differentiate this instructor's approach
-   - Each insight should be a complete, standalone statement
+8. **main_theme**: 1-2 sentence summary of what this chunk was primarily about
 
-10. **main_theme**: 1-2 sentence summary of what this chunk was primarily about
+Note: Best practices and unique insights will be extracted from the full transcript analysis, not per-chunk.
 
 Return ONLY valid JSON. If a category has no content, return an empty list/string.
 
@@ -80,10 +72,6 @@ Example response structure:
       "use_case": "Orchestrating LLM workflows"
     }}
   ],
-  "best_practices": [
-    "Validate retrieval quality before passing to LLM",
-    "Use hybrid search for better results"
-  ],
   "code_examples": [
     {{
       "topic": "Creating embeddings",
@@ -100,8 +88,7 @@ Example response structure:
       "name": "LangChain RAG Tutorial",
       "reference": "Shared in chat"
     }}
-  ],
-  "unique_insights": []
+  ]
 }}
 """
 
@@ -221,7 +208,7 @@ Your task is to create a comprehensive educational summary in JSON format with t
   ],
 
   "unique_insights": [
-    "Counterintuitive advice, personal stories with lessons, or 'obvious but neglected' wisdom shared by the instructor"
+    "Counterintuitive advice, personal stories with lessons, or 'obvious but neglected' wisdom shared by the instructor. DEDUPLICATE aggressively - aim for 10-15 unique insights, not 40+."
   ],
 
   "next_steps": {{
@@ -232,7 +219,9 @@ Your task is to create a comprehensive educational summary in JSON format with t
 }}
 
 Important:
-- Consolidate duplicate concepts/topics from multiple chunks
+- **AGGRESSIVELY DEDUPLICATE**: If the same concept/practice/insight appears in multiple chunks with slightly different wording, consolidate it into ONE entry. Do NOT create separate entries for minor rewordings of the same idea.
+- For best_practices_learned: Aim for 8-12 UNIQUE practices maximum. If "write goals daily" appears 5 times, create ONE entry, not five.
+- For unique_insights: Aim for 10-15 UNIQUE insights maximum. Merge similar insights even if worded differently.
 - Maintain chronological flow where relevant
 - Highlight the most important concepts (mentioned multiple times or emphasized by instructor)
 - Make this useful as a study guide for students who attended OR missed the class

@@ -5,64 +5,8 @@ Create markdown and PDF study guide from educational summary JSON.
 import json
 import sys
 import os
-import re
 from datetime import datetime
 from typing import List
-
-
-def consolidate_duplicates(items: List[str], item_type: str) -> List[str]:
-    """
-    Use LLM to consolidate semantically duplicate items.
-
-    Args:
-        items: List of items (practices, insights, Q&A, etc.)
-        item_type: Type of items ('best practices', 'unique insights', etc.)
-
-    Returns:
-        Deduplicated list of items
-    """
-    if len(items) <= 5:
-        return items  # Too few to need consolidation
-
-    # Import here to avoid circular dependencies
-    try:
-        from .summarize_educational_content import EducationalSummarizer
-    except ImportError:
-        import summarize_educational_content
-        EducationalSummarizer = summarize_educational_content.EducationalSummarizer
-
-    provider = os.getenv('LLM_PROVIDER', 'vertex_ai')
-
-    prompt = f"""You are reviewing a list of {item_type} extracted from a meeting transcript.
-Many items are semantically duplicate - they express the same core idea in different words.
-
-Your task: Consolidate this list by:
-1. Grouping semantically similar/duplicate items together
-2. For each group, create ONE clear, well-written statement that captures the essence
-3. Return ONLY the consolidated list, removing all duplicates
-
-Original list ({len(items)} items):
-{chr(10).join(f"{i+1}. {item}" for i, item in enumerate(items))}
-
-Return a JSON array of consolidated items. Each item should be a clear, standalone statement.
-Format: ["item 1", "item 2", ...]
-
-IMPORTANT: Return ONLY the JSON array, no other text."""
-
-    try:
-        summarizer = EducationalSummarizer(provider=provider)
-        response = summarizer.call_llm(prompt, max_tokens=2048)
-
-        # Extract JSON from response
-        json_match = re.search(r'\[.*\]', response, re.DOTALL)
-        if json_match:
-            consolidated = json.loads(json_match.group())
-            print(f"  Consolidated {len(items)} → {len(consolidated)} {item_type}")
-            return consolidated
-    except Exception as e:
-        print(f"  ⚠️  Consolidation failed for {item_type}: {e}. Using original list.")
-
-    return items
 
 
 def create_markdown_study_guide(summary_file: str, output_file: str):
@@ -152,40 +96,38 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
     md.append("7. [Key Concepts](#key-concepts)")
     md.append("")
 
-    # Collect all best practices
-    all_best_practices = []
-    for chunk in chunk_analyses:
-        for practice in chunk.get('best_practices', []):
-            if practice not in all_best_practices:
-                all_best_practices.append(practice)
-
-    # Consolidate duplicates
-    print("🔄 Consolidating best practices...")
-    all_best_practices = consolidate_duplicates(all_best_practices, "best practices")
+    # Get best practices from overall summary (already deduplicated)
+    best_practices = overall_summary.get('best_practices_learned', [])
 
     # Best Practices
     md.append("## Best Practices")
     md.append("")
-    for i, practice in enumerate(all_best_practices, 1):
-        md.append(f"{i}. {practice}")
-    md.append("")
-    # Collect all unique insights
-    all_unique_insights = []
-    for chunk in chunk_analyses:
-        for insight in chunk.get('unique_insights', []):
-            if insight not in all_unique_insights:
-                all_unique_insights.append(insight)
+    for i, practice_obj in enumerate(best_practices, 1):
+        if isinstance(practice_obj, dict):
+            practice = practice_obj.get('practice', '')
+            context = practice_obj.get('context', '')
+            importance = practice_obj.get('importance', '')
 
-    # Consolidate duplicates
-    print("🔄 Consolidating unique insights...")
-    all_unique_insights = consolidate_duplicates(all_unique_insights, "unique insights")
+            md.append(f"{i}. {practice}")
+            if context:
+                md.append(f"   - *Context*: {context}")
+            if importance:
+                md.append(f"   - *Why it matters*: {importance}")
+        else:
+            # Fallback if it's just a string
+            md.append(f"{i}. {practice_obj}")
+    md.append("")
+
+    # Get unique insights from overall summary (already deduplicated)
+    unique_insights = overall_summary.get('unique_insights', [])
+
     # Unique Insights
-    if all_unique_insights:
+    if unique_insights:
         md.append("## Unique Insights")
         md.append("")
         md.append("*Distinctive wisdom, counterintuitive advice, and \"obvious but neglected\" practices shared by the instructor:*")
         md.append("")
-        for i, insight in enumerate(all_unique_insights, 1):
+        for i, insight in enumerate(unique_insights, 1):
             md.append(f"{i}. {insight}")
         md.append("")
     # Collect all unique concepts (to be rendered later at the end)
@@ -327,13 +269,15 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
     # Calculate stats
     total_concepts = len(all_concepts)
     total_tools = len(all_tools)
-    total_practices = len(all_best_practices)
+    total_practices = len(best_practices)
+    total_insights = len(unique_insights)
     total_qa = len(all_qa)
 
     print(f"\nStudy Guide Contents:")
     print(f"  - {total_concepts} Key Concepts")
     print(f"  - {total_tools} Tools/Frameworks")
     print(f"  - {total_practices} Best Practices")
+    print(f"  - {total_insights} Unique Insights")
     print(f"  - {total_qa} Q&A Exchanges")
     print(f"  - {len(chunk_analyses)} Time Segments")
 

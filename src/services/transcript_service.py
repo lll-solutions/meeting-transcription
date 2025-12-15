@@ -553,7 +553,8 @@ class TranscriptService:
                 "headers": {"Content-Type": "application/json"},
                 "body": json_lib.dumps(payload).encode(),
                 "oidc_token": {
-                    "service_account_email": f"{os.getenv('GCP_PROJECT_NUMBER', '')}-compute@developer.gserviceaccount.com"
+                    "service_account_email": f"{os.getenv('GCP_PROJECT_NUMBER', '')}-compute@developer.gserviceaccount.com",
+                    "audience": service_url  # Use base service URL as audience
                 },
             }
         }
