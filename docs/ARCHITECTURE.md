@@ -42,14 +42,14 @@ This document describes the technical architecture of the Meeting Transcription 
 
 ### Overview
 
-The service uses **Google Cloud Identity-Aware Proxy (IAP)** to secure access. This provides:
+The service uses **JWT-based authentication** with database-stored user credentials. This provides:
 
-- Zero-code authentication
-- Automatic Google account integration
-- Only users with GCP project access can use the service
-- No passwords or API keys to manage
+- Email and password authentication
+- Secure JWT tokens with httpOnly cookies
+- OIDC token verification for internal service-to-service calls
+- Webhook signature verification for Recall.ai events
 
-### How IAP Works
+### How Authentication Works
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -60,88 +60,116 @@ The service uses **Google Cloud Identity-Aware Proxy (IAP)** to secure access. T
 │      https://meeting-transcription-xxxxx-uc.a.run.app                      │
 │                              │                                              │
 │                              ▼                                              │
-│   2. IAP intercepts request                                                 │
-│      ┌─────────────────────────────────────────────┐                       │
-│      │  Is user signed in with Google?             │                       │
-│      │  Does user have IAM access to project?      │                       │
-│      └─────────────────────────────────────────────┘                       │
+│   2. Login page (if not authenticated)                                      │
+│      User enters email + password                                           │
+│      POST /api/auth/login                                                   │
 │                              │                                              │
-│              ┌───────────────┴───────────────┐                             │
-│              ▼                               ▼                              │
-│   3a. NO: Redirect to              3b. YES: Add headers and                │
-│       Google Sign-In                   forward to Cloud Run                 │
-│                                                                             │
-│   4. Request reaches Cloud Run with IAP headers:                           │
-│      X-Goog-Authenticated-User-Email: accounts.google.com:user@example.com │
-│      X-Goog-Authenticated-User-Id: 12345678901234567890                    │
+│                              ▼                                              │
+│   3. Server validates credentials                                           │
+│      - Check password hash (bcrypt)                                         │
+│      - Generate JWT token (signed with JWT_SECRET)                          │
+│      - Set httpOnly cookie                                                  │
+│                              │                                              │
+│                              ▼                                              │
+│   4. Subsequent requests include cookie                                     │
+│      - Middleware validates JWT token                                       │
+│      - Extracts user email from token                                       │
+│      - Sets g.user for request context                                      │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Configuration
 
-IAP is enabled by setting Cloud Run to require authentication:
-
-```yaml
-# In Cloud Run deployment (app.json)
-"options": {
-  "allow-unauthenticated": false  # Enables IAP requirement
-}
-```
-
-### Granting Access
-
-By default, only the project owner has access. To add more users:
+Cloud Run is deployed with `--allow-unauthenticated` to handle authentication in application code:
 
 ```bash
-# Grant access to a specific user
-gcloud projects add-iam-policy-binding PROJECT_ID \
-  --member="user:colleague@example.com" \
-  --role="roles/run.invoker"
-
-# Grant access to a Google Group
-gcloud projects add-iam-policy-binding PROJECT_ID \
-  --member="group:team@example.com" \
-  --role="roles/run.invoker"
+gcloud run deploy meeting-transcription \
+    --allow-unauthenticated \
+    --set-secrets="JWT_SECRET=JWT_SECRET:latest,..."
 ```
 
-### Webhook Exception
+### User Management
 
-The `/webhook/recall` endpoint must be accessible without authentication (for Recall.ai to send events). This is handled by:
+**Admin User Setup:**
 
-1. Cloud Run allows the webhook path specifically, OR
-2. Webhook signature verification (recommended for production)
+During initial setup, an admin user is created via the `/api/auth/setup` endpoint:
+
+```bash
+curl -X POST https://your-service.run.app/api/auth/setup \
+  -H "Content-Type: application/json" \
+  -H "X-Setup-Key: ${SETUP_API_KEY}" \
+  -d '{"email": "admin@example.com", "password": "...", "name": "Admin"}'
+```
+
+This endpoint is secured with a setup API key and can only be called once.
+
+**Additional Users:**
+
+Currently single-user deployment. Multi-user features planned for future releases.
+
+### Protected Endpoints
+
+Most API endpoints require authentication:
+
+- `/api/meetings/*` - Meeting management
+- `/api/transcripts/*` - Transcript operations
+- `/api/users/*` - User profile and settings
+
+### Public Endpoints
+
+These endpoints are accessible without authentication:
+
+- `/health` - Health check
+- `/webhook/recall` - Recall.ai webhook (verified via OIDC or signature)
+- `/api/auth/login` - Login endpoint
+- `/api/auth/setup` - One-time admin setup (requires setup key)
+
+### Webhook Authentication
+
+The `/webhook/recall` endpoint uses multiple verification methods:
+
+1. **OIDC Token Verification** - For Cloud Tasks calling the service
+2. **Webhook Signature** - Optional verification of Recall.ai webhook signatures
 
 ### Code Implementation
 
 ```python
-def get_current_user() -> str:
-    """
-    Get the current authenticated user from IAP headers.
-    
-    Returns:
-        str: User email or 'anonymous' for webhooks
-    """
-    # IAP adds these headers automatically
-    iap_email = request.headers.get('X-Goog-Authenticated-User-Email', '')
-    if iap_email:
-        # Format: "accounts.google.com:user@example.com"
-        return iap_email.split(':')[-1]
-    
-    return 'anonymous'  # Webhook requests
+from src.api.auth import AuthMiddleware
+
+# Initialize auth middleware
+auth = AuthMiddleware()
+
+@app.before_request
+def authenticate():
+    """Authenticate requests before processing."""
+    if auth.is_public_endpoint(request.path):
+        return None
+
+    # Verify JWT token from cookie
+    user = auth.verify_jwt_token(request)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # Set user context
+    g.user = user
 ```
 
-### Enterprise Extension Points
+### OIDC Verification (Service-to-Service)
 
-The code includes hooks for future enterprise auth:
+Cloud Tasks uses OIDC tokens when calling back to the service:
 
 ```python
-# Future: Firebase Auth / OAuth validation
-# auth_header = request.headers.get('Authorization', '')
-# if auth_header.startswith('Bearer '):
-#     token = auth_header[7:]
-#     user = validate_firebase_token(token)
-#     return user['email']
+def verify_oidc_token(request, expected_audience):
+    """Verify OIDC token from Cloud Tasks."""
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return False
+
+    token = auth_header[7:]
+    # Verify token signature and audience
+    # Only accept tokens from our project's service account
+    return validate_token(token, expected_audience)
 ```
 
 ---
@@ -704,12 +732,18 @@ ngrok http 8080
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `RECALL_API_KEY` | Recall.ai API key | Required |
+| `RECALL_API_KEY` | Recall.ai API key (if bot joining enabled) | Optional |
+| `JWT_SECRET` | Secret for signing JWT tokens | Required |
+| `SETUP_API_KEY` | One-time setup endpoint key | Required |
 | `OUTPUT_BUCKET` | GCS bucket name | None (local) |
 | `RETENTION_DAYS` | Days to keep data | 0 (forever) |
-| `LLM_PROVIDER` | AI provider | vertex_ai |
-| `GCP_PROJECT` | GCP project ID | Auto-detected |
+| `LLM_PROVIDER` | AI provider (vertex_ai, azure_openai) | vertex_ai |
+| `AUTH_PROVIDER` | Authentication provider | db |
+| `GOOGLE_CLOUD_PROJECT` | GCP project ID | Auto-detected |
+| `GCP_PROJECT_NUMBER` | GCP project number | Auto-detected |
 | `GCP_REGION` | Region for Vertex AI | us-central1 |
+| `SERVICE_URL` | Cloud Run service URL | Auto-detected |
+| `FEATURES_BOT_JOINING` | Enable bot joining feature | true |
 | `PORT` | Server port | 8080 |
 | `DEBUG` | Enable debug mode | false |
 
@@ -717,7 +751,17 @@ ngrok http 8080
 
 ## Future Architecture (Enterprise)
 
-The current architecture supports extension for enterprise features:
+### Current Implementation (Single-User)
+
+✅ **Already Implemented:**
+- JWT-based authentication with secure httpOnly cookies
+- Database-stored user credentials (bcrypt hashed)
+- OIDC token verification for service-to-service calls
+- Rate limiting (in-memory, per-instance)
+- Plugin architecture for extensibility
+- Optional bot joining (upload-only mode available)
+
+### Planned Enterprise Extensions
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -725,22 +769,31 @@ The current architecture supports extension for enterprise features:
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │   MULTI-TENANT AUTH                                                         │
-│   └── Firebase Auth / Okta / Azure AD                                      │
-│       - Replace IAP with token-based auth                                  │
-│       - User management, teams, roles                                      │
-│       - SSO integration                                                     │
+│   └── SSO Integration (Okta / Azure AD / Google Workspace)                 │
+│       - Multi-user teams and organizations                                 │
+│       - Role-based access control (RBAC)                                   │
+│       - User invitation and management APIs                                │
+│       - Session management and activity logs                               │
 │                                                                             │
 │   ADVANCED STORAGE                                                          │
-│   └── Per-tenant isolation                                                 │
+│   └── Per-organization isolation                                           │
 │       - Separate buckets per organization                                  │
-│       - Encryption at rest with customer keys                              │
-│       - Audit logging                                                       │
+│       - Encryption at rest with customer-managed keys                      │
+│       - Comprehensive audit logging                                         │
+│       - Data retention policies per organization                           │
 │                                                                             │
 │   COMPLIANCE                                                                │
 │   └── HIPAA, SOC2, GDPR                                                    │
-│       - Data residency options                                             │
-│       - Enhanced audit trails                                              │
-│       - Data export/deletion APIs                                          │
+│       - Data residency options (region selection)                          │
+│       - Enhanced audit trails with tamper-proof logging                    │
+│       - Data export/deletion APIs (GDPR right to be forgotten)             │
+│       - BAA (Business Associate Agreement) support                         │
+│                                                                             │
+│   SCALABILITY                                                               │
+│   └── Distributed rate limiting                                            │
+│       - Redis/Memorystore for shared rate limits                           │
+│       - Cloud CDN for static assets                                        │
+│       - Multi-region deployment options                                    │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```

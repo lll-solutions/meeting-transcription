@@ -1,12 +1,10 @@
 # Deployment Guide
 
-Deploy Meeting Transcription to Google Cloud Platform with **one click**.
+Deploy Meeting Transcription to Google Cloud Platform in about 15 minutes using our automated setup wizard.
 
 ## Prerequisites
 
-You need 3 things before deploying. Use our **[Setup Helper](setup.html)** to guide you through each step!
-
-### 1. Google Cloud Account (2 minutes)
+### 1. Google Cloud Account
 
 **New to Google Cloud?** Get $300 in free credits:
 
@@ -19,69 +17,88 @@ This gives you:
 
 **Already have Google Cloud?** Make sure billing is enabled on your project.
 
-### 2. Recall.ai Account + API Key (2 minutes)
+### 2. Recall.ai Account + API Key (Optional)
+
+**Only needed if you want the bot to join live meetings.**
 
 Sign up at [recall.ai](https://recall.ai) and get your API key from the Dashboard.
 
 > 💡 **Free trial available!** Recall.ai offers free credits to get started.
 
-### 3. AssemblyAI API Key (2 minutes)
-
-Sign up at [assemblyai.com](https://www.assemblyai.com/) and get your API key.
-
-> 💡 **Free trial available!** AssemblyAI includes free transcription hours.
-
-**Important:** Configure your AssemblyAI key in your Recall.ai dashboard:
+**Configure transcription:** The setup uses Recall.ai's built-in transcription. Optionally configure AssemblyAI in your Recall.ai dashboard for higher quality transcripts:
 1. Go to [Recall.ai Dashboard](https://recall.ai/dashboard)
 2. Navigate to Settings → Transcription
-3. Paste your AssemblyAI API key
+3. Add your AssemblyAI API key (optional)
 
-> 💡 AI summarization uses Google's Vertex AI which is automatically configured - no extra setup needed!
+> 💡 AI summarization uses Google's Vertex AI which is automatically configured during setup!
 
 ---
 
-## One-Click Deploy to Google Cloud
+## Deploy to Google Cloud
 
-### Step 1: Click the Button
+### Step 1: Open in Google Cloud Shell
 
-[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/lll-solutions/meeting-transcription.git&cloudshell_open_in_editor=README.md&cloudshell_workspace=.)
 
-This opens Google Cloud Console in your browser.
+This opens the repository in Google Cloud Shell (a browser-based terminal).
 
-### Step 2: Sign In & Authorize
+### Step 2: Run the Setup Script
 
-- Sign in with your Google account
-- Authorize Cloud Shell to access your account
-- Select or create a GCP project
+Once Cloud Shell opens, run:
 
-### Step 3: Enter Your Recall.ai Key
-
-You'll see a simple form with just 1 field:
-
-| Field | What to Enter |
-|-------|---------------|
-| RECALL_API_KEY | Paste your Recall.ai API key |
-
-That's all you need! Vertex AI (for Gemini) is automatically enabled in your project.
-
-### Step 4: Deploy
-
-Click **Deploy** and wait ~3 minutes.
-
-### Step 5: Copy Your Service URL
-
-When done, you'll see:
-
-```
-✓ Service deployed!
-Service URL: https://meeting-transcription-abc123-uc.a.run.app
+```bash
+./setup.sh
 ```
 
-**Copy this URL** - you'll need it next.
+### Step 3: Follow the Setup Wizard
+
+The wizard will guide you through:
+
+**Project Setup:**
+- Create a new GCP project or use an existing one
+- Link billing account
+- Enable required APIs (Cloud Run, Firestore, Vertex AI, etc.)
+
+**Feature Configuration:**
+- **Bot Joining**: Choose whether to enable live meeting bots (requires Recall.ai) or upload-only mode
+- **LLM Provider**: Select Vertex AI (Gemini) or Azure OpenAI for AI summarization
+
+**Admin User:**
+- Set up initial admin account (email and password)
+- Creates secure JWT secret and API keys
+
+**Deployment:**
+- Deploys to Cloud Run (~5 minutes)
+- Sets up Cloud Tasks for background processing
+- Creates Firestore indexes
+
+**Total time: ~15 minutes**
+
+### Step 4: Copy Your Service URL
+
+When complete, you'll see:
+
+```
+╔═══════════════════════════════════════════════════════════════╗
+║                    🎉 SETUP COMPLETE! 🎉                       ║
+╚═══════════════════════════════════════════════════════════════╝
+
+Your service is live at:
+
+  https://meeting-transcription-abc123-uc.a.run.app
+
+🔐 Login Credentials:
+  Email:    admin@example.com
+  Password: your-password
+```
+
+**Save these credentials!** You'll need them to log in.
 
 ---
 
 ## Configure Recall.ai Webhook
+
+**Note:** Only needed if you enabled bot joining during setup.
 
 ### Step 1: Go to Recall.ai Dashboard
 
@@ -95,23 +112,43 @@ Navigate to **Settings → Webhooks** and add:
 https://YOUR-SERVICE-URL/webhook/recall
 ```
 
+Replace `YOUR-SERVICE-URL` with your actual Cloud Run URL from the setup output.
+
 ### Step 3: Enable Events
 
 Check these webhook events:
-- ✅ `bot.joining_call` (updates status to "in_meeting")
-- ✅ `bot.done`
-- ✅ `transcript.done`
-- ✅ `recording.done`
+- ✅ `bot.joining_call` - Updates status when bot enters meeting
+- ✅ `bot.done` - Triggers transcript request when meeting ends
+- ✅ `bot.call_ended` - Alternative meeting end event
+- ✅ `recording.done` - Recording processing complete
+- ✅ `transcript.done` - Triggers AI processing pipeline
+- ✅ `transcript.failed` - Alerts when transcription fails
 
 ### Step 4: Save
 
 Click **Save** and you're done!
 
+> 💡 **Optional:** For additional security, you can configure a webhook secret. See the setup script output for instructions.
+
 ---
 
 ## Test Your Deployment
 
-### Health Check
+### Web Interface
+
+1. Open your service URL in a browser:
+   ```
+   https://YOUR-SERVICE-URL
+   ```
+
+2. Log in with your admin credentials (from setup output)
+
+3. Try the features:
+   - **Upload a transcript** (if you have a test transcript file)
+   - **Schedule a bot** to join a meeting (if bot joining is enabled)
+   - View your meetings and download outputs
+
+### Health Check (API)
 
 ```bash
 curl https://YOUR-SERVICE-URL/health
@@ -119,28 +156,22 @@ curl https://YOUR-SERVICE-URL/health
 
 Should return: `{"status": "ok"}`
 
-### Join a Test Meeting
-
-```bash
-curl -X POST https://YOUR-SERVICE-URL/api/meetings \
-  -H "Content-Type: application/json" \
-  -d '{
-    "meeting_url": "https://zoom.us/j/YOUR_MEETING_ID",
-    "join_at": "now"
-  }'
-```
-
-The bot should join your meeting within 30 seconds!
-
 ---
 
 ## That's It! 🎉
 
-Your meeting transcription service is now running. When the bot joins a meeting and the meeting ends:
+Your meeting transcription service is now running. Depending on your configuration:
 
-1. Transcript is automatically generated
-2. AI summarizes the content
-3. PDF study guide is created
+**With Bot Joining Enabled:**
+1. Bot joins your meeting automatically
+2. Records and transcribes with speaker identification
+3. AI generates comprehensive study guide
+4. Outputs available as Markdown and PDF
+
+**Upload-Only Mode:**
+1. Upload meeting transcript files
+2. AI processes and generates study guide
+3. Download Markdown and PDF outputs
 
 ---
 
@@ -251,20 +282,30 @@ To update environment variables (like API keys):
 
 ## Troubleshooting
 
+### "Can't log in"
+- Verify you're using the correct email and password from setup output
+- Check that JWT_SECRET is configured in Cloud Run secrets
+- Try resetting password via the setup API endpoint
+- Check Cloud Run logs for authentication errors
+
 ### "Bot won't join meeting"
-- Check Recall.ai API key is correct
-- Verify meeting URL format
+- Verify bot joining feature was enabled during setup
+- Check Recall.ai API key is correct in Cloud Run secrets
+- Verify meeting URL format (must be valid Zoom/Meet/Teams URL)
 - Check [Cloud Run logs](https://console.cloud.google.com/run) → your service → Logs
 
 ### "Webhook not working"
-- Verify webhook URL in Recall.ai dashboard
+- Verify webhook URL in Recall.ai dashboard matches your Cloud Run URL
 - Make sure you copied the full URL including `https://`
 - Check that `/webhook/recall` is at the end
+- Verify all required events are enabled in Recall.ai webhook settings
 
-### "No summary generated"
-- Check LLM provider API key
+### "No summary generated" or "Transcript stuck in processing"
+- **Using Vertex AI (default):** Verify Vertex AI API is enabled in your GCP project
+- **Using Azure OpenAI:** Check Azure API key, endpoint, and deployment name are correct
 - Verify you have quota/credits with your LLM provider
-- Check Cloud Run logs for errors
+- Check Cloud Run logs for LLM API errors
+- For uploaded transcripts: Verify Cloud Tasks is configured and compute service account has `roles/run.invoker`
 
 ### View Logs
 
