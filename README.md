@@ -8,6 +8,13 @@ Transform your video meetings into comprehensive, AI-powered study guides and su
 
 **Want to try it right now?** Click the button below to deploy your own instance in Google Cloud:
 
+> 💡 **Before you start:** You'll need accounts with:
+> - [Google Cloud](https://console.cloud.google.com/freetrial) with billing enabled ($300 free credits for new accounts)
+> - [Recall.ai](https://recall.ai) for the meeting bot (free credits included)
+> - [AssemblyAI](https://www.assemblyai.com/) for transcription (free hours included)
+>
+> **All services offer free trials**—you can test the entire system without paying anything!
+
 ### Step 1: Open in Google Cloud Shell
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/lll-solutions/meeting-transcription.git&cloudshell_open_in_editor=README.md&cloudshell_workspace=.)
@@ -22,7 +29,6 @@ Once Cloud Shell opens, run:
 
 The setup wizard will guide you through everything:
 - ✅ Creating a GCP project (or using existing)
-- ✅ Setting up billing ($300 free credits for new users!)
 - ✅ Enabling required APIs
 - ✅ Deploying to Cloud Run
 - ✅ Storing your API keys securely
