@@ -578,6 +578,12 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
     --role="roles/cloudtasks.enqueuer" \
     --quiet 2>/dev/null || true
 
+# Grant service account permission to invoke Cloud Run (for tasks to call the service)
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+    --role="roles/run.invoker" \
+    --quiet 2>/dev/null || true
+
 echo -e "${GREEN}✓ Cloud Tasks configured${NC}"
 echo ""
 
@@ -640,7 +646,7 @@ echo "     --update-secrets='RECALL_WEBHOOK_SECRET=RECALL_WEBHOOK_SECRET:latest'
 echo ""
 echo -e "${GREEN}🚀 Try it now:${NC}"
 echo "  Open in browser: ${SERVICE_URL}"
-echo "  Click 'Sign in with Google' and you're in!"
+echo "  Sign in with your email and password!"
 echo ""
 
 # Save configuration for reference

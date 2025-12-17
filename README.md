@@ -4,6 +4,41 @@ Transform your video meetings into comprehensive, AI-powered study guides and su
 
 [![License: ELv2](https://img.shields.io/badge/License-ELv2-blue.svg)](LICENSE)
 
+## 🚀 Quick Start (15 minutes)
+
+**Want to try it right now?** Click the button below to deploy your own instance in Google Cloud:
+
+> 💡 **Before you start:** You'll need accounts with:
+> - [Google Cloud](https://console.cloud.google.com/freetrial) with billing enabled ($300 free credits for new accounts)
+> - [Recall.ai](https://recall.ai) for the meeting bot (free credits included)
+> - [AssemblyAI](https://www.assemblyai.com/) for transcription (free hours included)
+>
+> **All services offer free trials**—you can test the entire system without paying anything!
+
+### Step 1: Open in Google Cloud Shell
+
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/lll-solutions/meeting-transcription.git&cloudshell_open_in_editor=README.md&cloudshell_workspace=.)
+
+### Step 2: Run the Setup Script
+
+Once Cloud Shell opens, run:
+
+```bash
+./setup.sh
+```
+
+The setup wizard will guide you through everything:
+- ✅ Creating a GCP project (or using existing)
+- ✅ Enabling required APIs
+- ✅ Deploying to Cloud Run
+- ✅ Storing your API keys securely
+
+**That's it!** In about 15 minutes, you'll have your own deployed service up and running.
+
+See [Deployment Guide](docs/DEPLOYMENT.md) for detailed instructions.
+
+---
+
 ## 🎯 What This Does
 
 1. **Join any meeting** (Zoom, Google Meet, Microsoft Teams)
@@ -35,11 +70,15 @@ Meeting URL → Bot Joins → Records → Transcribes → Plugin Processes → C
 The meeting-transcription system uses a **plugin architecture** to support different types of content while sharing common infrastructure (bot management, storage, authentication, deployment).
 
 **Educational Plugin (Built-in):**
-- Generates comprehensive study guides from class recordings, workshops, and training sessions
-- Time-based chunking (configurable 5-30 minute segments)
-- Multi-stage AI analysis with intelligent deduplication
-- Extracts key concepts, Q&A sessions, and actionable takeaways
-- Outputs professional Markdown and PDF study guides
+Generates comprehensive study guides from class recordings, workshops, and training sessions:
+- **Key Concepts & Technical Topics** - Automatically identifies and explains main concepts
+- **Q&A Exchanges** - Captures all questions and answers from the session
+- **Tools & Frameworks** - Lists all technologies, tools, and frameworks discussed
+- **Best Practices & Unique Insights** - Extracts actionable recommendations and key insights
+- **Code Demonstrations** - Identifies and highlights code examples shown in class
+- **Assignments & Action Items** - Captures homework, tasks, and follow-up actions
+- **Configurable Analysis** - Time-based chunking (5-30 min segments), multi-stage processing with intelligent deduplication
+- **Professional Output** - Generates both Markdown and PDF study guides
 
 **Extensibility:**
 Each plugin has full control over:
@@ -52,31 +91,6 @@ Each plugin has full control over:
 Create custom plugins for your specific domain—legal case summaries, sales call analysis, medical consultations, or any other use case. The plugin system handles all the infrastructure while you focus on domain-specific processing logic.
 
 See [Plugin Architecture Guide](docs/PLUGIN_ARCHITECTURE.md) for details on creating custom plugins.
-
-## 🚀 Quick Start (5 minutes)
-
-### Step 1: Open in Google Cloud Shell
-
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https://github.com/lll-solutions/meeting-transcription.git&cloudshell_open_in_editor=README.md&cloudshell_workspace=.)
-
-### Step 2: Run the Setup Script
-
-Once Cloud Shell opens, run:
-
-```bash
-./setup.sh
-```
-
-The script will guide you through everything:
-- ✅ Creating a GCP project (or using existing)
-- ✅ Setting up billing ($300 free credits for new users!)
-- ✅ Enabling required APIs
-- ✅ Deploying to Cloud Run
-- ✅ Storing your API keys securely
-
-**That's it!** At the end, you'll get a URL for your deployed service.
-
-See [Deployment Guide](docs/DEPLOYMENT.md) for detailed instructions.
 
 ### Local Development (for developers)
 
