@@ -162,9 +162,9 @@ Your task is to create a comprehensive educational summary in JSON format with t
 
   "best_practices_learned": [
     {{
-      "practice": "Best practice description",
-      "context": "When/why it applies",
-      "importance": "Why this matters"
+      "practice": "Short, memorable title for the best practice (e.g., 'Snap the Chalk Line', 'The Neural Network First Rule')",
+      "context": "Specific scenario or situation where this applies (e.g., 'Project Kickoff', 'When using AI for planning')",
+      "importance": "Clear explanation of why this matters and what it prevents/enables (2-3 sentences)"
     }}
   ],
 
