@@ -6,6 +6,7 @@ flask-limiter>=3.5.0
 
 # HTTP Client
 requests>=2.31.0
+svix>=1.0.0                 # For Recall.ai webhook signature verification
 
 # Environment Variables
 python-dotenv>=1.0.0

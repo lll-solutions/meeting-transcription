@@ -400,29 +400,51 @@ def require_auth_optional(f):
     return decorated
 
 
-def verify_recall_webhook_signature(payload: bytes, signature: str) -> bool:
+def verify_recall_webhook_signature(payload: bytes, headers: dict) -> bool:
     """
-    Verify Recall.ai webhook signature using HMAC-SHA256.
-    
+    Verify Recall.ai webhook signature using Svix.
+
+    Recall.ai uses Svix for webhook delivery, which requires specific
+    signature verification with multiple headers (id, timestamp, signature).
+
     Args:
         payload: Raw request body
-        signature: Signature from header
-    
+        headers: Request headers (must include svix-id, svix-timestamp, svix-signature)
+
     Returns:
         bool: True if signature is valid
     """
     config = get_config()
-    
+
     if not config.recall_webhook_secret:
         return True  # No secret configured, skip verification
-    
-    expected = hmac.new(
-        config.recall_webhook_secret.encode(),
-        payload,
-        hashlib.sha256
-    ).hexdigest()
-    
-    return hmac.compare_digest(expected, signature)
+
+    try:
+        from svix.webhooks import Webhook
+
+        # Svix requires these three headers
+        svix_id = headers.get('svix-id') or headers.get('Svix-Id')
+        svix_timestamp = headers.get('svix-timestamp') or headers.get('Svix-Timestamp')
+        svix_signature = headers.get('svix-signature') or headers.get('Svix-Signature')
+
+        if not all([svix_id, svix_timestamp, svix_signature]):
+            print(f"⚠️ Missing Svix headers: id={bool(svix_id)}, ts={bool(svix_timestamp)}, sig={bool(svix_signature)}")
+            return False
+
+        # Create Svix webhook verifier
+        wh = Webhook(config.recall_webhook_secret)
+
+        # Verify signature
+        wh.verify(payload, {
+            'svix-id': svix_id,
+            'svix-timestamp': svix_timestamp,
+            'svix-signature': svix_signature
+        })
+
+        return True
+    except Exception as e:
+        print(f"❌ Webhook signature verification failed: {e}")
+        return False
 
 
 def verify_webhook(f):
@@ -430,12 +452,11 @@ def verify_webhook(f):
     Decorator to verify Recall.ai webhook signatures.
 
     In production, webhook signature verification is REQUIRED.
+    Uses Svix signature verification (Recall.ai's webhook provider).
     """
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         config = get_config()
-
-        signature = request.headers.get("X-Recall-Signature", "")
         is_development = os.getenv("ENV", "").lower() == "development"
 
         if not config.recall_webhook_secret:
@@ -449,12 +470,12 @@ def verify_webhook(f):
                 g.user = "webhook"
                 return f(*args, **kwargs)
 
-        if not signature:
-            return jsonify({"error": "Missing webhook signature"}), 401
-
+        # Get raw payload and headers for Svix verification
         payload = request.get_data()
+        headers = dict(request.headers)
 
-        if not verify_recall_webhook_signature(payload, signature):
+        # Verify using Svix format
+        if not verify_recall_webhook_signature(payload, headers):
             print("❌ Invalid webhook signature")
             return jsonify({"error": "Invalid webhook signature"}), 401
 
