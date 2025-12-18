@@ -168,8 +168,7 @@ def create_educational_content_chunks(
         transcript = json.load(f)
 
     if not transcript:
-        print("Error: Empty transcript")
-        return
+        raise ValueError("Empty transcript - no content to process")
 
     # Identify instructor
     instructor = identify_instructor(transcript)
