@@ -734,7 +734,7 @@
                 </div>
 
                 <div class="actions">
-                    <button class="btn btn-primary" id="new-meeting-bot-btn" onclick="createMeeting()">
+                    <button class="btn btn-primary" id="new-meeting-bot-btn" onclick="openNewMeetingModal()">
                         ➕ New Meeting Bot
                     </button>
                     <button class="btn btn-primary" id="schedule-bot-btn" onclick="openScheduleModal()">
@@ -830,6 +830,17 @@
                     <label for="meeting-title">Meeting Title (optional)</label>
                     <input type="text" id="meeting-title" placeholder="e.g., Team Standup - Dec 8">
                 </div>
+
+                <div class="form-group">
+                    <label for="upload-plugin">Plugin</label>
+                    <select id="upload-plugin" onchange="updateUploadMetadataFields()"
+                        style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit; font-size: 0.9375rem;">
+                        <option value="">Loading plugins...</option>
+                    </select>
+                </div>
+
+                <!-- Dynamic metadata fields for upload modal -->
+                <div id="upload-metadata-fields"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="hideUploadModal()">Cancel</button>
@@ -891,6 +902,17 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="schedule-plugin">Plugin</label>
+                    <select id="schedule-plugin" onchange="updateScheduleMetadataFields()"
+                        style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit; font-size: 0.9375rem;">
+                        <option value="">Loading plugins...</option>
+                    </select>
+                </div>
+
+                <!-- Dynamic metadata fields for schedule modal -->
+                <div id="schedule-metadata-fields"></div>
+
+                <div class="form-group">
                     <label for="schedule-datetime">
                         Select Time
                         <span id="user-timezone-label" style="font-size: 0.75rem; color: var(--text-secondary);">
@@ -950,6 +972,17 @@
                     </p>
                 </div>
 
+                <div class="form-group">
+                    <label for="settings-default-plugin">Default Plugin</label>
+                    <select id="settings-default-plugin"
+                        style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit; font-size: 0.9375rem;">
+                        <option value="">Loading plugins...</option>
+                    </select>
+                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                        This plugin will be used by default for new meetings. You can override it when creating each meeting.
+                    </p>
+                </div>
+
                 <div id="settings-success" style="color: var(--success); font-size: 0.875rem; margin-top: 1rem; display: none;">
                     ✓ Settings saved successfully
                 </div>
@@ -964,6 +997,51 @@
         </div>
     </div>
 
+    <!-- New Meeting Bot Modal -->
+    <div class="modal-overlay" id="new-meeting-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>New Meeting Bot</h2>
+                <button class="modal-close" onclick="closeNewMeetingModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">
+                    Create a bot to join and record a meeting. The bot will transcribe the meeting and process it based on the selected plugin.
+                </p>
+
+                <div class="form-group">
+                    <label for="new-meeting-url">Meeting URL</label>
+                    <input type="text" id="new-meeting-url"
+                        placeholder="https://zoom.us/j/123456789" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="new-meeting-bot-name">Bot Name (optional)</label>
+                    <input type="text" id="new-meeting-bot-name"
+                        placeholder="Meeting Assistant">
+                </div>
+
+                <div class="form-group">
+                    <label for="new-meeting-plugin">Plugin</label>
+                    <select id="new-meeting-plugin" onchange="updateNewMeetingMetadataFields()"
+                        style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit; font-size: 0.9375rem;">
+                        <option value="">Loading plugins...</option>
+                    </select>
+                </div>
+
+                <!-- Dynamic metadata fields will be inserted here -->
+                <div id="new-meeting-metadata-fields"></div>
+
+                <div id="new-meeting-validation-error" style="color: #ef4444; font-size: 0.875rem; margin-top: 1rem; display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeNewMeetingModal()">Cancel</button>
+                <button class="btn btn-primary" id="new-meeting-submit-btn" onclick="submitNewMeeting()">
+                    🚀 Create Bot
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script>
         // Auth State
@@ -972,10 +1050,168 @@
         let authUser = JSON.parse(localStorage.getItem('auth_user') || 'null');
         let featureFlags = {};
 
+        // Plugin State
+        let availablePlugins = [];
+        let pluginDetails = {};
+        let defaultPlugin = 'educational'; // Fallback default
+
+        // ==========================================
+        // PLUGIN SYSTEM
+        // ==========================================
+
+        async function loadPlugins() {
+            try {
+                availablePlugins = await apiCall('/api/plugins');
+
+                // Load details for each plugin
+                for (const plugin of availablePlugins) {
+                    pluginDetails[plugin.name] = await apiCall(`/api/plugins/${plugin.name}`);
+                }
+
+                // Populate all plugin dropdowns
+                populatePluginDropdowns();
+            } catch (error) {
+                console.error('Failed to load plugins:', error);
+                availablePlugins = [{ name: 'educational', display_name: 'Educational Class' }];
+            }
+        }
+
+        function populatePluginDropdowns() {
+            const dropdowns = [
+                'new-meeting-plugin',
+                'schedule-plugin',
+                'upload-plugin',
+                'settings-default-plugin'
+            ];
+
+            dropdowns.forEach(dropdownId => {
+                const dropdown = document.getElementById(dropdownId);
+                if (dropdown) {
+                    dropdown.innerHTML = availablePlugins.map(plugin =>
+                        `<option value="${plugin.name}">${plugin.display_name}</option>`
+                    ).join('');
+
+                    // Set default value
+                    if (defaultPlugin) {
+                        dropdown.value = defaultPlugin;
+                    }
+                }
+            });
+
+            // Trigger metadata field updates for modals
+            updateNewMeetingMetadataFields();
+            updateScheduleMetadataFields();
+            updateUploadMetadataFields();
+        }
+
+        function renderMetadataFields(pluginName, containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            if (!pluginName || !pluginDetails[pluginName]) {
+                container.innerHTML = '';
+                return;
+            }
+
+            const plugin = pluginDetails[pluginName];
+            const schema = plugin.metadata_schema || {};
+
+            let html = '';
+            for (const [fieldName, fieldDef] of Object.entries(schema)) {
+                const inputId = `${containerId}-${fieldName}`;
+                const requiredMark = fieldDef.required ? '<span style="color: #ef4444;">*</span>' : '';
+
+                html += `<div class="form-group">`;
+                html += `<label for="${inputId}">${fieldDef.label || fieldName} ${requiredMark}</label>`;
+
+                if (fieldDef.type === 'select') {
+                    html += `<select id="${inputId}" ${fieldDef.required ? 'required' : ''}
+                        style="width: 100%; padding: 0.75rem 1rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: inherit; font-size: 0.9375rem;">`;
+
+                    if (!fieldDef.required) {
+                        html += `<option value="">(Optional)</option>`;
+                    }
+
+                    fieldDef.options.forEach(opt => {
+                        const selected = opt === fieldDef.default ? 'selected' : '';
+                        html += `<option value="${opt}" ${selected}>${opt}</option>`;
+                    });
+                    html += `</select>`;
+                } else if (fieldDef.type === 'text' || fieldDef.type === 'string') {
+                    html += `<input type="text" id="${inputId}"
+                        placeholder="${fieldDef.description || ''}"
+                        ${fieldDef.required ? 'required' : ''}
+                        value="${fieldDef.default || ''}">`;
+                } else if (fieldDef.type === 'integer') {
+                    html += `<input type="number" id="${inputId}"
+                        placeholder="${fieldDef.description || ''}"
+                        ${fieldDef.required ? 'required' : ''}
+                        value="${fieldDef.default || ''}">`;
+                } else {
+                    html += `<input type="text" id="${inputId}"
+                        placeholder="${fieldDef.description || ''}"
+                        ${fieldDef.required ? 'required' : ''}
+                        value="${fieldDef.default || ''}">`;
+                }
+
+                if (fieldDef.description) {
+                    html += `<p style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem;">${fieldDef.description}</p>`;
+                }
+
+                html += `</div>`;
+            }
+
+            container.innerHTML = html;
+        }
+
+        function getMetadataFromFields(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return {};
+
+            const metadata = {};
+            const inputs = container.querySelectorAll('input, select, textarea');
+
+            inputs.forEach(input => {
+                const fieldName = input.id.replace(`${containerId}-`, '');
+                let value = input.value;
+
+                // Convert to appropriate type
+                if (input.type === 'number') {
+                    value = parseInt(value);
+                } else if (value === '') {
+                    value = undefined; // Don't include empty values
+                }
+
+                if (value !== undefined) {
+                    metadata[fieldName] = value;
+                }
+            });
+
+            return metadata;
+        }
+
+        function updateNewMeetingMetadataFields() {
+            const pluginName = document.getElementById('new-meeting-plugin')?.value;
+            renderMetadataFields(pluginName, 'new-meeting-metadata-fields');
+        }
+
+        function updateScheduleMetadataFields() {
+            const pluginName = document.getElementById('schedule-plugin')?.value;
+            renderMetadataFields(pluginName, 'schedule-metadata-fields');
+        }
+
+        function updateUploadMetadataFields() {
+            const pluginName = document.getElementById('upload-plugin')?.value;
+            renderMetadataFields(pluginName, 'upload-metadata-fields');
+        }
+
         // Initialize
         async function initApp() {
             // Fetch feature flags first
             await fetchFeatureFlags();
+
+            // Load plugins
+            await loadPlugins();
 
             if (authToken && authUser) {
                 currentUser = authUser;
@@ -983,6 +1219,12 @@
                 // Set timezone from user data
                 if (currentUser.timezone) {
                     currentUserTimezone = currentUser.timezone;
+                }
+
+                // Set default plugin from user data
+                if (currentUser.default_plugin) {
+                    defaultPlugin = currentUser.default_plugin;
+                    populatePluginDropdowns(); // Re-populate with correct default
                 }
 
                 showDashboard(currentUser);
@@ -1215,27 +1457,79 @@
             window.location.href = `/ui/meetings/${meetingId}`;
         }
 
-        // Create new meeting
-        async function createMeeting() {
-            const meetingUrl = prompt('Enter the meeting URL (Zoom, Google Meet, etc.):');
-            if (!meetingUrl) return;
+        // ==========================================
+        // NEW MEETING BOT MODAL
+        // ==========================================
 
-            const botName = prompt('Enter bot name (optional, press Enter for default):', 'Meeting Assistant');
+        function openNewMeetingModal() {
+            document.getElementById('new-meeting-url').value = '';
+            document.getElementById('new-meeting-bot-name').value = '';
+            document.getElementById('new-meeting-validation-error').style.display = 'none';
+
+            // Set default plugin
+            if (defaultPlugin) {
+                document.getElementById('new-meeting-plugin').value = defaultPlugin;
+                updateNewMeetingMetadataFields();
+            }
+
+            document.getElementById('new-meeting-modal').classList.add('show');
+        }
+
+        function closeNewMeetingModal() {
+            document.getElementById('new-meeting-modal').classList.remove('show');
+        }
+
+        async function submitNewMeeting() {
+            const meetingUrl = document.getElementById('new-meeting-url').value.trim();
+            const botName = document.getElementById('new-meeting-bot-name').value.trim();
+            const pluginName = document.getElementById('new-meeting-plugin').value;
+            const errorEl = document.getElementById('new-meeting-validation-error');
+
+            // Validation
+            if (!meetingUrl) {
+                errorEl.textContent = 'Please enter a meeting URL';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            if (!pluginName) {
+                errorEl.textContent = 'Please select a plugin';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            errorEl.style.display = 'none';
+
+            // Get metadata from dynamic fields
+            const metadata = getMetadataFromFields('new-meeting-metadata-fields');
+
+            const submitBtn = document.getElementById('new-meeting-submit-btn');
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.textContent = '⏳ Creating...';
 
             try {
-                showToast('Creating meeting bot...', 'success');
+                const payload = {
+                    meeting_url: meetingUrl,
+                    bot_name: botName || 'Meeting Assistant',
+                    plugin: pluginName,
+                    metadata: metadata
+                };
+
                 const meeting = await apiCall('/api/meetings', {
                     method: 'POST',
-                    body: JSON.stringify({
-                        meeting_url: meetingUrl,
-                        bot_name: botName || 'Meeting Assistant'
-                    })
+                    body: JSON.stringify(payload)
                 });
+
+                closeNewMeetingModal();
                 showToast('Meeting bot created!', 'success');
                 loadMeetings();
             } catch (error) {
                 console.error('Create meeting error:', error);
                 showToast('Failed to create meeting: ' + error.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
             }
         }
 
@@ -1313,6 +1607,12 @@
         let transcriptData = null;
 
         function showUploadModal() {
+            // Set default plugin
+            if (defaultPlugin) {
+                document.getElementById('upload-plugin').value = defaultPlugin;
+                updateUploadMetadataFields();
+            }
+
             document.getElementById('upload-modal').classList.add('show');
         }
 
@@ -1409,9 +1709,11 @@
                 return;
             }
 
-            // Save transcript data to local variable before modal is hidden (which clears it)
+            // Save transcript data and form values before modal is hidden
             const dataToUpload = transcriptData;
             const title = document.getElementById('meeting-title').value || `Upload ${new Date().toLocaleDateString()}`;
+            const pluginName = document.getElementById('upload-plugin').value;
+            const metadata = getMetadataFromFields('upload-metadata-fields');
 
             // Hide upload modal, show processing modal
             hideUploadModal();
@@ -1430,7 +1732,9 @@
                     method: 'POST',
                     body: JSON.stringify({
                         transcript: dataToUpload,
-                        title: title
+                        title: title,
+                        plugin: pluginName,
+                        metadata: metadata
                     })
                 });
 
@@ -1538,6 +1842,12 @@
             document.getElementById('schedule-datetime').value = '';
             document.getElementById('schedule-validation-error').style.display = 'none';
 
+            // Set default plugin
+            if (defaultPlugin) {
+                document.getElementById('schedule-plugin').value = defaultPlugin;
+                updateScheduleMetadataFields();
+            }
+
             // Set min datetime to now
             setMinDatetime();
 
@@ -1641,10 +1951,16 @@
                 // Need to send as ISO8601: "2024-12-10T15:30:00"
                 const isoDateTime = datetimeLocal + ':00';
 
+                // Get plugin and metadata
+                const pluginName = document.getElementById('schedule-plugin').value;
+                const metadata = getMetadataFromFields('schedule-metadata-fields');
+
                 const payload = {
                     meeting_url: meetingUrl,
                     bot_name: botName,
-                    scheduled_time: isoDateTime
+                    scheduled_time: isoDateTime,
+                    plugin: pluginName,
+                    metadata: metadata
                 };
 
                 // Add instructor name if provided
@@ -1683,6 +1999,12 @@
                 timezoneSelect.value = currentUserTimezone;
             }
 
+            // Load current default plugin
+            const pluginSelect = document.getElementById('settings-default-plugin');
+            if (defaultPlugin && pluginSelect) {
+                pluginSelect.value = defaultPlugin;
+            }
+
             // Hide success/error messages
             document.getElementById('settings-success').style.display = 'none';
             document.getElementById('settings-error').style.display = 'none';
@@ -1697,6 +2019,7 @@
 
         async function saveSettings() {
             const timezone = document.getElementById('settings-timezone').value;
+            const plugin = document.getElementById('settings-default-plugin').value;
             const saveBtn = document.getElementById('settings-save-btn');
             const successEl = document.getElementById('settings-success');
             const errorEl = document.getElementById('settings-error');
@@ -1714,17 +2037,21 @@
                 const response = await apiCall('/api/users/me', {
                     method: 'PATCH',
                     body: JSON.stringify({
-                        timezone: timezone
+                        timezone: timezone,
+                        default_plugin: plugin
                     })
                 });
 
-                // Update local timezone
+                // Update local settings
                 currentUserTimezone = timezone;
+                defaultPlugin = plugin;
                 updateTimezoneLabel();
+                populatePluginDropdowns(); // Refresh all dropdowns with new default
 
                 // Update currentUser and localStorage
                 if (currentUser) {
                     currentUser.timezone = timezone;
+                    currentUser.default_plugin = plugin;
                     localStorage.setItem('auth_user', JSON.stringify(currentUser));
                 }
 

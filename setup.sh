@@ -314,6 +314,34 @@ if [[ "$FEATURES_BOT_JOINING" == "true" ]]; then
         --quiet 2>/dev/null || true
 
     echo -e "${GREEN}✓ Recall.ai API key stored securely${NC}"
+
+    # Step 6a2: Get Recall.ai Webhook Secret
+    echo ""
+    echo "You also need your Recall.ai Webhook Secret for secure webhook verification."
+    echo ""
+    echo -e "${GREEN}→ Find it at: https://recall.ai/dashboard → Settings → Webhooks${NC}"
+    echo ""
+    read -sp "Paste your Recall.ai Webhook Secret (hidden, starts with whsec_): " RECALL_WEBHOOK_SECRET
+    echo ""
+
+    if [ -n "$RECALL_WEBHOOK_SECRET" ]; then
+        # Store in Secret Manager
+        echo "Storing Webhook Secret in Secret Manager..."
+        echo -n "$RECALL_WEBHOOK_SECRET" | gcloud secrets create RECALL_WEBHOOK_SECRET --data-file=- 2>/dev/null || {
+            echo -n "$RECALL_WEBHOOK_SECRET" | gcloud secrets versions add RECALL_WEBHOOK_SECRET --data-file=-
+        }
+
+        # Grant Cloud Run service account access to the secret
+        gcloud secrets add-iam-policy-binding RECALL_WEBHOOK_SECRET \
+            --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+            --role="roles/secretmanager.secretAccessor" \
+            --quiet 2>/dev/null || true
+
+        echo -e "${GREEN}✓ Recall.ai Webhook Secret stored securely${NC}"
+    else
+        echo -e "${YELLOW}⚠️  No Webhook Secret provided - webhooks will not be verified${NC}"
+        echo -e "${YELLOW}   You can add it later with the commands shown at the end${NC}"
+    fi
 else
     echo ""
     echo -e "${YELLOW}⚠️  Skipping Recall.ai API key (bot joining disabled)${NC}"
@@ -455,19 +483,27 @@ cd "$SCRIPT_DIR"
 
 echo "Deploying with Identity Platform Authentication..."
 
-# Build environment variables
+# Build environment variables (SERVICE_URL and WEBHOOK_URL will be set after deployment)
 ENV_VARS="LLM_PROVIDER=${LLM_PROVIDER},GCP_REGION=us-central1,OUTPUT_BUCKET=${BUCKET_NAME},RETENTION_DAYS=30"
 ENV_VARS="${ENV_VARS},AUTH_PROVIDER=db,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_PROJECT_NUMBER=${PROJECT_NUMBER}"
-ENV_VARS="${ENV_VARS},WEBHOOK_URL=${SERVICE_URL}/webhook/recall"
 ENV_VARS="${ENV_VARS},FEATURES_BOT_JOINING=${FEATURES_BOT_JOINING}"
 
 # Build secrets string (always include JWT_SECRET and SETUP_API_KEY)
 SECRETS_STRING="JWT_SECRET=JWT_SECRET:latest,SETUP_API_KEY=SETUP_API_KEY:latest"
 
-# Add Recall API key if bot joining is enabled
+# Add Recall API key and webhook secret if bot joining is enabled
 if [ "$FEATURES_BOT_JOINING" = "true" ]; then
     echo "Including Recall.ai API key from Secret Manager"
     SECRETS_STRING="${SECRETS_STRING},RECALL_API_KEY=RECALL_API_KEY:latest"
+
+    # Check if webhook secret exists in Secret Manager
+    WEBHOOK_SECRET_EXISTS=$(gcloud secrets describe RECALL_WEBHOOK_SECRET --format="value(name)" 2>/dev/null || echo "")
+    if [ -n "$WEBHOOK_SECRET_EXISTS" ]; then
+        echo "Including Recall.ai Webhook Secret from Secret Manager"
+        SECRETS_STRING="${SECRETS_STRING},RECALL_WEBHOOK_SECRET=RECALL_WEBHOOK_SECRET:latest"
+    else
+        echo -e "${YELLOW}⚠️  Webhook secret not found - webhooks will not be verified${NC}"
+    fi
 fi
 
 # Add Azure OpenAI secrets if using Azure
@@ -490,6 +526,15 @@ gcloud run deploy meeting-transcription \
 
 # Get service URL
 SERVICE_URL=$(gcloud run services describe meeting-transcription --region us-central1 --format="value(status.url)")
+
+# Update service with SERVICE_URL and WEBHOOK_URL now that we know the actual URL
+echo "Updating service with correct URLs..."
+gcloud run services update meeting-transcription \
+    --region us-central1 \
+    --update-env-vars="SERVICE_URL=${SERVICE_URL},WEBHOOK_URL=${SERVICE_URL}/webhook/recall" \
+    --quiet
+
+echo -e "${GREEN}✓ Service URLs configured${NC}"
 
 # Create Admin User via API
 echo ""
@@ -667,17 +712,25 @@ echo ""
 echo -e "${YELLOW}📡 Configure Recall.ai Webhook${NC}"
 echo ""
 echo "1. Go to: https://recall.ai/dashboard → Settings → Webhooks"
-echo "2. Add webhook URL:"
+echo "2. Verify webhook URL is set to:"
 echo ""
 echo -e "   ${GREEN}${SERVICE_URL}/webhook/recall${NC}"
 echo ""
-echo "3. Enable events: bot.done, transcript.done, recording.done"
-echo "4. (Optional) For extra security, copy the webhook secret and run:"
+echo "3. Ensure these events are enabled: bot.done, transcript.done, recording.done"
 echo ""
-echo "   echo 'your-secret' | gcloud secrets create RECALL_WEBHOOK_SECRET --data-file=-"
-echo "   gcloud run services update meeting-transcription --region us-central1 \\"
-echo "     --update-secrets='RECALL_WEBHOOK_SECRET=RECALL_WEBHOOK_SECRET:latest'"
-echo ""
+if [ "$FEATURES_BOT_JOINING" = "true" ] && [ -z "$WEBHOOK_SECRET_EXISTS" ]; then
+    echo -e "${YELLOW}⚠️  Note: Webhook secret was not provided during setup.${NC}"
+    echo "   To add it later for enhanced security:"
+    echo ""
+    echo "   echo 'your-secret' | gcloud secrets create RECALL_WEBHOOK_SECRET --data-file=-"
+    echo "   gcloud secrets add-iam-policy-binding RECALL_WEBHOOK_SECRET \\"
+    echo "     --member=\"serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com\" \\"
+    echo "     --role=\"roles/secretmanager.secretAccessor\""
+    echo "   gcloud run services update meeting-transcription --region us-central1 \\"
+    echo "     --update-secrets='RECALL_WEBHOOK_SECRET=RECALL_WEBHOOK_SECRET:latest'"
+    echo ""
+fi
+
 echo -e "${GREEN}🚀 Try it now:${NC}"
 echo "  Open in browser: ${SERVICE_URL}"
 echo "  Sign in with your email and password!"

@@ -14,6 +14,10 @@ from .plugin_registry import (
     has_plugin,
     get_registry
 )
+from .plugin_loader import (
+    discover_and_register_plugins,
+    register_builtin_plugins
+)
 
 __all__ = [
     'TranscriptPlugin',
@@ -22,5 +26,7 @@ __all__ = [
     'get_plugin',
     'list_plugins',
     'has_plugin',
-    'get_registry'
+    'get_registry',
+    'discover_and_register_plugins',
+    'register_builtin_plugins'
 ]

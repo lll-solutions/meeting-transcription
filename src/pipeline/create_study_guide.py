@@ -102,21 +102,35 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
     # Best Practices
     md.append("## Best Practices")
     md.append("")
-    for i, practice_obj in enumerate(best_practices, 1):
-        if isinstance(practice_obj, dict):
-            practice = practice_obj.get('practice', '')
-            context = practice_obj.get('context', '')
-            importance = practice_obj.get('importance', '')
+    if not best_practices:
+        md.append("*No best practices were identified in this session.*")
+        md.append("")
+    else:
+        for i, practice_obj in enumerate(best_practices, 1):
+            if isinstance(practice_obj, dict):
+                practice = practice_obj.get('practice', '').strip()
+                context = practice_obj.get('context', '').strip()
+                importance = practice_obj.get('importance', '').strip()
 
-            md.append(f"{i}. {practice}")
-            if context:
-                md.append(f"   - *Context*: {context}")
-            if importance:
-                md.append(f"   - *Why it matters*: {importance}")
-        else:
-            # Fallback if it's just a string
-            md.append(f"{i}. {practice_obj}")
-    md.append("")
+                # Handle case where practice might be empty but context/importance exist
+                if not practice and (context or importance):
+                    practice = "(Untitled Practice)"
+
+                # Always show the practice title in bold for better formatting
+                md.append(f"{i}. **{practice}**")
+
+                # Add context and importance if they exist
+                if context:
+                    md.append(f"   - *Context*: {context}")
+                if importance:
+                    md.append(f"   - *Why it matters*: {importance}")
+
+                # Add blank line between practices for readability
+                md.append("")
+            else:
+                # Fallback if it's just a string (shouldn't happen with updated prompt)
+                md.append(f"{i}. {str(practice_obj).strip()}")
+                md.append("")
 
     # Get unique insights from overall summary (already deduplicated)
     unique_insights = overall_summary.get('unique_insights', [])
