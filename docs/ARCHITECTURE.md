@@ -114,6 +114,7 @@ Most API endpoints require authentication:
 
 - `/api/meetings/*` - Meeting management
 - `/api/transcripts/*` - Transcript operations
+  - `POST /api/transcripts/upload` - Upload transcript file (JSON, VTT, or TXT)
 - `/api/users/*` - User profile and settings
 
 ### Public Endpoints
@@ -589,9 +590,11 @@ def verify_webhook_signature(request, webhook_secret):
 
 ### Complete Pipeline Flow
 
+#### Flow 1: Bot-Based Meeting Capture (Original)
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           COMPLETE DATA FLOW                                │
+│                         BOT-BASED DATA FLOW                                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │   1. USER CREATES MEETING                                                   │
@@ -643,6 +646,57 @@ def verify_webhook_signature(request, webhook_secret):
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+#### Flow 2: Direct Transcript Upload (New)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      TRANSCRIPT UPLOAD DATA FLOW                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   1. USER UPLOADS TRANSCRIPT                                                │
+│      POST /api/transcripts/upload                                          │
+│      { transcript: "..." (JSON/VTT/TXT), title: "..." }                    │
+│      │                                                                      │
+│      ▼                                                                      │
+│   2. FORMAT DETECTION & PARSING                                             │
+│      ┌─────────────────────────────────────────────────────────┐           │
+│      │  • Detect format (Recall JSON, VTT, or bracketed text)  │           │
+│      │  • Parse to unified combined format                     │           │
+│      │  • Validate structure and extract metadata              │           │
+│      └─────────────────────────────────────────────────────────┘           │
+│      → Firestore: save meeting (status: queued, id: upload-*)              │
+│      → Cloud Tasks: enqueue processing task                                │
+│      │                                                                      │
+│      ▼                                                                      │
+│   3. SUMMARIZATION PIPELINE                                                 │
+│      ┌─────────────────────────────────────────────────────────┐           │
+│      │  a. Load transcript from Firestore                      │           │
+│      │  b. Combine words into sentences (or pass-through)      │           │
+│      │  c. Create time-based chunks (10 min each)              │           │
+│      │  d. Send each chunk to LLM (Gemini/OpenAI/Anthropic)    │           │
+│      │  e. Generate overall summary                            │           │
+│      │  f. Create Markdown study guide                         │           │
+│      │  g. Convert to PDF                                      │           │
+│      └─────────────────────────────────────────────────────────┘           │
+│      │                                                                      │
+│      ▼                                                                      │
+│   4. SAVE OUTPUTS                                                           │
+│      → Cloud Storage: upload all files                                     │
+│      → Firestore: update (status: completed, outputs: {...})               │
+│      │                                                                      │
+│      ▼                                                                      │
+│   5. USER DOWNLOADS                                                         │
+│      GET /api/meetings/{id}/outputs                                        │
+│      → Returns signed URLs for each file                                   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Supported Upload Formats**:
+- **Recall.ai JSON** - Unified format with word-level timestamps
+- **VTT (WebVTT)** - Zoom's native transcript export format
+- **Bracketed Text** - Google Meet, legal depositions with `[HH:MM:SS]` timestamps
+
 ---
 
 ## Security Considerations
@@ -690,6 +744,50 @@ def verify_webhook_signature(request, webhook_secret):
 - Currently synchronous (blocking)
 - For high volume, consider Cloud Tasks for async processing
 - Each meeting processes independently
+
+### Pipeline Modules
+
+#### `src/pipeline/parse_text_transcript.py`
+
+**Purpose**: Parse text-based transcript formats into unified combined format
+
+**Functions**:
+- `detect_text_transcript_format(text)` - Auto-detect transcript format (VTT, Google Meet, etc.)
+- `parse_vtt_to_combined_format(text)` - Parse WebVTT format (Zoom native)
+- `parse_bracketed_to_combined_format(text)` - Parse bracketed timestamp format (Google Meet)
+- `parse_text_to_combined_format(text)` - Auto-detect and parse any supported text format
+
+**Format Detection Logic**:
+1. Check for `WEBVTT` header and VTT timestamp pattern → VTT format
+2. Check for bracketed timestamps `[HH:MM:SS]` + speaker labels → Bracketed format
+3. Otherwise → Unknown format (error)
+
+**Output**: Unified combined format compatible with existing pipeline:
+```python
+[
+  {
+    "participant": {"id": 100, "name": "Speaker", ...},
+    "text": "Full text of this segment",
+    "start_timestamp": {"relative": 5.0, "absolute": None},
+    "end_timestamp": {"relative": 8.0, "absolute": None},
+    "word_count": 42
+  }
+]
+```
+
+#### `src/pipeline/combine_transcript_words.py`
+
+**Purpose**: Convert word-level transcripts to sentence-level
+
+**Smart Detection**:
+- If transcript has `words` array → Combine words into text
+- If transcript already has `text` field → Pass through unchanged
+
+**Usage**:
+```python
+combine_transcript_words("raw.json", "combined.json")
+# Auto-detects format and processes accordingly
+```
 
 ---
 

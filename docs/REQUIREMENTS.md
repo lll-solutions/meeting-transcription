@@ -143,6 +143,49 @@ POST /api/meetings
 | Output | Labeled transcript segments per speaker |
 | Acceptance Criteria | 90%+ accuracy on speaker identification |
 
+#### FR-3.2.3: Direct Transcript Upload
+**Priority**: P1 (Implemented)
+
+| Attribute | Description |
+|-----------|-------------|
+| Description | Upload existing transcript files directly, bypassing bot/recording |
+| Input | Transcript file (JSON, VTT, or TXT format) |
+| Output | Parsed and normalized transcript ready for LLM processing |
+| Acceptance Criteria | Support multiple transcript formats with automatic detection |
+
+**Supported Formats**:
+
+1. **Recall.ai JSON** - Unified format from Recall bot captures:
+```json
+[
+  {
+    "participant": {"id": 100, "name": "Speaker", ...},
+    "words": [
+      {"text": "hello", "start_timestamp": {...}, "end_timestamp": {...}}
+    ]
+  }
+]
+```
+
+2. **VTT (WebVTT)** - Zoom's native export format:
+```
+WEBVTT
+
+00:00:05.000 --> 00:00:08.000
+Sarah Chen: Good morning everyone
+```
+
+3. **Bracketed Timestamps** - Google Meet, legal depositions:
+```
+[00:00:05]
+Sarah Chen: Good morning everyone
+
+[00:00:12]
+John Anderson: Morning Sarah
+```
+
+**Format Detection**: System automatically detects format and converts to unified internal format.
+
 ---
 
 ### 3.3 AI Summarization Pipeline
@@ -458,12 +501,13 @@ curl -X POST https://your-service.run.app/api/meetings \
 
 ### 9.1 Free & Open Source Alternatives (High Priority)
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| **Whisper Transcription** | P1 | Use OpenAI Whisper (open source) instead of AssemblyAI |
-| **Local LLM Support** | P1 | Use Ollama/llama.cpp for summarization without API costs |
-| **File Upload Mode** | P1 | Upload recordings from Google Drive, Dropbox, or local files |
-| **Open Source Bot** | P2 | Alternative to Recall.ai using open source meeting SDKs |
+| Feature | Priority | Status | Description |
+|---------|----------|--------|-------------|
+| **Transcript Upload** | P1 | ✅ Implemented | Upload transcript files directly (JSON, VTT, TXT) - bypasses bot/recording |
+| **Whisper Transcription** | P1 | Planned | Use OpenAI Whisper (open source) instead of AssemblyAI |
+| **Local LLM Support** | P1 | Planned | Use Ollama/llama.cpp for summarization without API costs |
+| **Recording Upload** | P1 | Planned | Upload recording files (MP4, WebM, MP3, WAV) for transcription |
+| **Open Source Bot** | P2 | Planned | Alternative to Recall.ai using open source meeting SDKs |
 
 ### 9.2 Zero-Cost Mode
 
