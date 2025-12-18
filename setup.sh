@@ -314,34 +314,9 @@ if [[ "$FEATURES_BOT_JOINING" == "true" ]]; then
         --quiet 2>/dev/null || true
 
     echo -e "${GREEN}✓ Recall.ai API key stored securely${NC}"
-
-    # Step 6a2: Get Recall.ai Webhook Secret
     echo ""
-    echo "You also need your Recall.ai Webhook Secret for secure webhook verification."
-    echo ""
-    echo -e "${GREEN}→ Find it at: https://recall.ai/dashboard → Settings → Webhooks${NC}"
-    echo ""
-    read -sp "Paste your Recall.ai Webhook Secret (hidden, starts with whsec_): " RECALL_WEBHOOK_SECRET
-    echo ""
-
-    if [ -n "$RECALL_WEBHOOK_SECRET" ]; then
-        # Store in Secret Manager
-        echo "Storing Webhook Secret in Secret Manager..."
-        echo -n "$RECALL_WEBHOOK_SECRET" | gcloud secrets create RECALL_WEBHOOK_SECRET --data-file=- 2>/dev/null || {
-            echo -n "$RECALL_WEBHOOK_SECRET" | gcloud secrets versions add RECALL_WEBHOOK_SECRET --data-file=-
-        }
-
-        # Grant Cloud Run service account access to the secret
-        gcloud secrets add-iam-policy-binding RECALL_WEBHOOK_SECRET \
-            --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-            --role="roles/secretmanager.secretAccessor" \
-            --quiet 2>/dev/null || true
-
-        echo -e "${GREEN}✓ Recall.ai Webhook Secret stored securely${NC}"
-    else
-        echo -e "${YELLOW}⚠️  No Webhook Secret provided - webhooks will not be verified${NC}"
-        echo -e "${YELLOW}   You can add it later with the commands shown at the end${NC}"
-    fi
+    echo -e "${YELLOW}Note: Webhook secret will be configured after deployment${NC}"
+    echo "      (You need your service URL first to set up the webhook)"
 else
     echo ""
     echo -e "${YELLOW}⚠️  Skipping Recall.ai API key (bot joining disabled)${NC}"
@@ -488,22 +463,18 @@ ENV_VARS="LLM_PROVIDER=${LLM_PROVIDER},GCP_REGION=us-central1,OUTPUT_BUCKET=${BU
 ENV_VARS="${ENV_VARS},AUTH_PROVIDER=db,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_PROJECT_NUMBER=${PROJECT_NUMBER}"
 ENV_VARS="${ENV_VARS},FEATURES_BOT_JOINING=${FEATURES_BOT_JOINING}"
 
+# Start in development mode (allows webhooks without secret verification initially)
+if [ "$FEATURES_BOT_JOINING" = "true" ]; then
+    ENV_VARS="${ENV_VARS},ENV=development"
+fi
+
 # Build secrets string (always include JWT_SECRET and SETUP_API_KEY)
 SECRETS_STRING="JWT_SECRET=JWT_SECRET:latest,SETUP_API_KEY=SETUP_API_KEY:latest"
 
-# Add Recall API key and webhook secret if bot joining is enabled
+# Add Recall API key if bot joining is enabled
 if [ "$FEATURES_BOT_JOINING" = "true" ]; then
     echo "Including Recall.ai API key from Secret Manager"
     SECRETS_STRING="${SECRETS_STRING},RECALL_API_KEY=RECALL_API_KEY:latest"
-
-    # Check if webhook secret exists in Secret Manager
-    WEBHOOK_SECRET_EXISTS=$(gcloud secrets describe RECALL_WEBHOOK_SECRET --format="value(name)" 2>/dev/null || echo "")
-    if [ -n "$WEBHOOK_SECRET_EXISTS" ]; then
-        echo "Including Recall.ai Webhook Secret from Secret Manager"
-        SECRETS_STRING="${SECRETS_STRING},RECALL_WEBHOOK_SECRET=RECALL_WEBHOOK_SECRET:latest"
-    else
-        echo -e "${YELLOW}⚠️  Webhook secret not found - webhooks will not be verified${NC}"
-    fi
 fi
 
 # Add Azure OpenAI secrets if using Azure
@@ -709,25 +680,31 @@ echo "   To check index status:"
 echo "   gcloud firestore indexes composite list"
 echo ""
 
-echo -e "${YELLOW}📡 Configure Recall.ai Webhook${NC}"
-echo ""
-echo "1. Go to: https://recall.ai/dashboard → Settings → Webhooks"
-echo "2. Verify webhook URL is set to:"
-echo ""
-echo -e "   ${GREEN}${SERVICE_URL}/webhook/recall${NC}"
-echo ""
-echo "3. Ensure these events are enabled: bot.done, transcript.done, recording.done"
-echo ""
-if [ "$FEATURES_BOT_JOINING" = "true" ] && [ -z "$WEBHOOK_SECRET_EXISTS" ]; then
-    echo -e "${YELLOW}⚠️  Note: Webhook secret was not provided during setup.${NC}"
-    echo "   To add it later for enhanced security:"
+if [ "$FEATURES_BOT_JOINING" = "true" ]; then
+    echo -e "${YELLOW}📡 Next Step: Enable Production Mode${NC}"
     echo ""
-    echo "   echo 'your-secret' | gcloud secrets create RECALL_WEBHOOK_SECRET --data-file=-"
-    echo "   gcloud secrets add-iam-policy-binding RECALL_WEBHOOK_SECRET \\"
-    echo "     --member=\"serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com\" \\"
-    echo "     --role=\"roles/secretmanager.secretAccessor\""
-    echo "   gcloud run services update meeting-transcription --region us-central1 \\"
-    echo "     --update-secrets='RECALL_WEBHOOK_SECRET=RECALL_WEBHOOK_SECRET:latest'"
+    echo -e "${BLUE}Your service is currently in DEVELOPMENT mode:${NC}"
+    echo "  • Webhooks work but aren't verified (less secure)"
+    echo "  • Good for testing, but not for production use"
+    echo ""
+    echo -e "${BLUE}To enable production mode with webhook security:${NC}"
+    echo ""
+    echo "  1. Go to: https://recall.ai/dashboard/webhooks"
+    echo "  2. Click 'Add Webhook' and paste this URL:"
+    echo ""
+    echo -e "     ${GREEN}${SERVICE_URL}/webhook/recall${NC}"
+    echo ""
+    echo "  3. Enable these events:"
+    echo "     • bot.joining_call, bot.done, bot.call_ended"
+    echo "     • recording.done, transcript.done, transcript.failed"
+    echo "  4. Click Save and COPY the webhook secret"
+    echo ""
+    echo "  5. Run this script to enable production mode:"
+    echo ""
+    echo -e "     ${GREEN}./setup-production.sh${NC}"
+    echo ""
+    echo -e "${YELLOW}⚠️  Until you run setup-production.sh:${NC}"
+    echo -e "${YELLOW}   Your service works but webhooks aren't verified (dev mode)${NC}"
     echo ""
 fi
 
