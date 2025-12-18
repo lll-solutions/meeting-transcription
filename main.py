@@ -39,12 +39,14 @@ from src.services.webhook_service import WebhookService
 from src.utils.url_validator import UrlValidator
 
 # Import plugin system
-from src.plugins import register_plugin, get_plugin
-from src.plugins.educational_plugin import EducationalPlugin
+from src.plugins import get_plugin, discover_and_register_plugins, register_builtin_plugins
 
-# Register built-in plugins
-register_plugin(EducationalPlugin())
-print(f"✅ Registered educational plugin")
+# Register built-in plugins (educational)
+register_builtin_plugins()
+
+# Auto-discover and register plugins from plugins/ directory
+# This allows plugins to be installed by simply copying files into plugins/
+discover_and_register_plugins()
 
 app = Flask(__name__, static_folder='static')
 

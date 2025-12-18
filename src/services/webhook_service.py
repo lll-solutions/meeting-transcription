@@ -292,7 +292,8 @@ class WebhookService:
                     "oidc_token": {
                         "service_account_email": (
                             f"{os.getenv('GCP_PROJECT_NUMBER', '')}-compute@developer.gserviceaccount.com"
-                        )
+                        ),
+                        "audience": service_url,
                     },
                 }
             }
