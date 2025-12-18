@@ -1041,16 +1041,21 @@ def download_output(meeting_id, filename):
 @limiter.limit("10 per hour")  # Limit uploads to prevent abuse
 def upload_transcript():
     """
-    Upload a transcript JSON file and process it through the LLM pipeline.
+    Upload a transcript (JSON or text format) and process it through the LLM pipeline.
 
     Processing is done asynchronously via Cloud Tasks - the endpoint returns immediately
     with a meeting_id that can be polled for status.
 
     Request body:
     {
-        "transcript": [...],  // The transcript JSON data
+        "transcript": [...] or "text",  // JSON array or text transcript
         "title": "Meeting Title"  // Optional title
     }
+
+    Supported formats:
+    - JSON: Recall format with words array (from Zoom/Google Meet/Teams bot)
+    - VTT: Zoom's native WebVTT transcript format
+    - Text: Google Meet, legal depositions with [HH:MM:SS] timestamps and "Speaker: text"
     """
     data = request.json
 
@@ -1059,6 +1064,27 @@ def upload_transcript():
 
     transcript_data = data['transcript']
     title = data.get('title')
+
+    # Detect and parse text transcripts
+    if isinstance(transcript_data, str):
+        from src.pipeline.parse_text_transcript import detect_text_transcript_format, parse_text_to_combined_format
+
+        detection = detect_text_transcript_format(transcript_data)
+
+        if detection['is_transcript']:
+            print(f"✅ Detected {detection['format']} text transcript")
+            try:
+                # Parse text to combined format
+                transcript_data = parse_text_to_combined_format(transcript_data)
+                print(f"   Parsed {len(transcript_data)} segments")
+            except Exception as e:
+                return jsonify({
+                    "error": f"Failed to parse text transcript: {str(e)}"
+                }), 400
+        else:
+            return jsonify({
+                "error": "Text format not recognized. Expected format with timestamps [HH:MM:SS] and 'Speaker: text' lines"
+            }), 400
 
     # Get service URL for Cloud Tasks callback
     service_url = os.getenv("SERVICE_URL") or request.host_url.rstrip('/')

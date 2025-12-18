@@ -9,15 +9,38 @@ def combine_transcript_words(input_file, output_file):
     """
     Transform transcript from word-level to conversation-level.
 
+    Detects format and handles:
+    - Recall/Zoom format with 'words' array (needs combining)
+    - Already-combined format with 'text' field (pass through)
+
     Args:
-        input_file: Path to input JSON file with individual words
+        input_file: Path to input JSON file
         output_file: Path to output JSON file with combined text
     """
     # Read the transcript
     with open(input_file, 'r') as f:
         transcript = json.load(f)
 
-    # Transform each segment
+    if not transcript or len(transcript) == 0:
+        print("⚠️ Empty transcript")
+        with open(output_file, 'w') as f:
+            json.dump([], f, indent=2)
+        return
+
+    # Detect format: check first segment
+    first_segment = transcript[0]
+
+    # Check if already combined (has 'text' field and no 'words' field)
+    if 'text' in first_segment and 'words' not in first_segment:
+        print("✅ Transcript already in combined format, passing through...")
+        # Just copy it over
+        with open(output_file, 'w') as f:
+            json.dump(transcript, f, indent=2)
+        print(f"Processed {len(transcript)} segments (pass-through)")
+        print(f"Output written to: {output_file}")
+        return
+
+    # Transform each segment from word-level format
     combined_transcript = []
     for segment in transcript:
         # Combine all words into a single text string

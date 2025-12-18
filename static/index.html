@@ -805,16 +805,16 @@
             </div>
             <div class="modal-body">
                 <p class="modal-description">
-                    Upload a Recall.ai transcript JSON file to process through the LLM pipeline.
+                    Upload a transcript to process through the LLM pipeline.
                     The system will generate summaries and a study guide.
                 </p>
 
                 <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-                    <input type="file" id="file-input" accept=".json" style="display: none"
+                    <input type="file" id="file-input" accept=".json,.vtt,.txt" style="display: none"
                         onchange="handleFileSelect(event)">
                     <div class="upload-icon">📁</div>
-                    <p class="upload-text">Click or drag a JSON file here</p>
-                    <p class="upload-hint">Supports Recall.ai transcript format</p>
+                    <p class="upload-text">Click or drag a transcript file here</p>
+                    <p class="upload-hint">Supports: Recall.ai JSON, Zoom VTT, Google Meet text</p>
                 </div>
 
                 <div id="file-preview" class="file-preview" style="display: none;">
@@ -1629,8 +1629,13 @@
         }
 
         function processSelectedFile(file) {
-            if (!file.name.endsWith('.json')) {
-                showToast('Please select a JSON file', 'error');
+            const fileName = file.name.toLowerCase();
+            const isJson = fileName.endsWith('.json');
+            const isVtt = fileName.endsWith('.vtt');
+            const isTxt = fileName.endsWith('.txt');
+
+            if (!isJson && !isVtt && !isTxt) {
+                showToast('Please select a JSON, VTT, or TXT file', 'error');
                 return;
             }
 
@@ -1639,10 +1644,19 @@
             const reader = new FileReader();
             reader.onload = function (e) {
                 try {
-                    transcriptData = JSON.parse(e.target.result);
+                    const fileContent = e.target.result;
+
+                    // For JSON files, parse as JSON
+                    if (isJson) {
+                        transcriptData = JSON.parse(fileContent);
+                    } else {
+                        // For VTT and TXT files, send as text string
+                        transcriptData = fileContent;
+                    }
+
                     showFilePreview(file, transcriptData);
                 } catch (err) {
-                    showToast('Invalid JSON file', 'error');
+                    showToast(`Invalid ${isJson ? 'JSON' : 'text'} file: ${err.message}`, 'error');
                     clearFile();
                 }
             };
@@ -1655,13 +1669,15 @@
             document.getElementById('file-name').textContent = file.name;
 
             // Calculate stats
-            let segmentCount = 0;
-            let wordCount = 0;
-            let participants = new Set();
-            let duration = 0;
+            let statsHtml = '';
 
             if (Array.isArray(data)) {
-                segmentCount = data.length;
+                // JSON transcript - show detailed stats
+                let segmentCount = data.length;
+                let wordCount = 0;
+                let participants = new Set();
+                let duration = 0;
+
                 data.forEach(segment => {
                     if (segment.words) {
                         wordCount += segment.words.length;
@@ -1676,20 +1692,36 @@
                         if (endTime > duration) duration = endTime;
                     }
                 });
+
+                const durationMin = Math.floor(duration / 60);
+                const durationSec = Math.floor(duration % 60);
+
+                statsHtml = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                        <div>📊 ${segmentCount} segments</div>
+                        <div>📝 ${wordCount.toLocaleString()} words</div>
+                        <div>👥 ${participants.size} participants</div>
+                        <div>⏱️ ${durationMin}m ${durationSec}s</div>
+                    </div>
+                `;
+            } else if (typeof data === 'string') {
+                // Text transcript (VTT or TXT) - show basic stats
+                const lines = data.split('\n').filter(line => line.trim().length > 0);
+                const wordCount = data.split(/\s+/).filter(w => w.length > 0).length;
+                const fileSize = (file.size / 1024).toFixed(1);
+                const format = file.name.toLowerCase().endsWith('.vtt') ? 'VTT' : 'Text';
+
+                statsHtml = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                        <div>📄 ${format} format</div>
+                        <div>📝 ${wordCount.toLocaleString()} words</div>
+                        <div>📏 ${lines.length} lines</div>
+                        <div>💾 ${fileSize} KB</div>
+                    </div>
+                `;
             }
 
-            const durationMin = Math.floor(duration / 60);
-            const durationSec = Math.floor(duration % 60);
-
-            document.getElementById('file-stats').innerHTML = `
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                    <div>📊 ${segmentCount} segments</div>
-                    <div>📝 ${wordCount.toLocaleString()} words</div>
-                    <div>👥 ${participants.size} participants</div>
-                    <div>⏱️ ${durationMin}m ${durationSec}s</div>
-                </div>
-            `;
-
+            document.getElementById('file-stats').innerHTML = statsHtml;
             document.getElementById('process-btn').disabled = false;
         }
 
