@@ -185,43 +185,55 @@ class EducationalSummarizer:
 
     def _call_vertex_ai(self, prompt: str, max_tokens: int) -> str:
         """Call Vertex AI (Gemini)."""
-        contents = [
-            types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=prompt)]
+        try:
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=prompt)]
+                )
+            ]
+
+            generation_config = types.GenerateContentConfig(
+                max_output_tokens=max_tokens,
+                temperature=0.7,
             )
-        ]
 
-        generation_config = types.GenerateContentConfig(
-            max_output_tokens=max_tokens,
-            temperature=0.7,
-        )
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=contents,
+                config=generation_config
+            )
 
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=contents,
-            config=generation_config
-        )
-
-        return response.text
+            return response.text
+        except Exception as e:
+            print(f"❌ Vertex AI API error: {e}")
+            return None
 
     def _call_anthropic(self, prompt: str, max_tokens: int) -> str:
         """Call Anthropic Claude."""
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.content[0].text
+        except Exception as e:
+            print(f"❌ Anthropic API error: {e}")
+            return None
 
     def _call_openai(self, prompt: str, max_tokens: int) -> str:
         """Call OpenAI or Azure OpenAI."""
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens
-        )
-        return response.choices[0].message.content
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"❌ OpenAI API error: {e}")
+            return None
 
     def _parse_json_response(self, response: str) -> Dict:
         """
@@ -234,6 +246,11 @@ class EducationalSummarizer:
             Parsed dictionary
         """
         try:
+            # Check if response is None or empty
+            if response is None:
+                print("⚠️ LLM response is None")
+                return None
+
             # Extract JSON from markdown code blocks if present
             if '```json' in response:
                 json_str = response.split('```json')[1].split('```')[0].strip()

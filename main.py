@@ -1064,6 +1064,8 @@ def upload_transcript():
 
     transcript_data = data['transcript']
     title = data.get('title')
+    plugin = data.get('plugin', 'educational')  # Default to educational if not specified
+    metadata = data.get('metadata', {})
 
     # Detect and parse text transcripts
     if isinstance(transcript_data, str):
@@ -1095,6 +1097,8 @@ def upload_transcript():
             user=g.user,
             transcript_data=transcript_data,
             title=title,
+            plugin=plugin,
+            metadata=metadata,
             service_url=service_url
         )
     except ValueError as e:

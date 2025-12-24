@@ -258,7 +258,8 @@ class TranscriptService:
         return outputs
 
     def queue_uploaded_transcript(
-        self, user: str, transcript_data: list, title: str | None, service_url: str
+        self, user: str, transcript_data: list, title: str | None,
+        plugin: str | None, metadata: dict | None, service_url: str
     ) -> tuple[str, str]:
         """
         Queue an uploaded transcript for processing via Cloud Tasks.
@@ -267,6 +268,8 @@ class TranscriptService:
             user: User ID uploading the transcript
             transcript_data: Transcript JSON data (list of segments)
             title: Optional title for the transcript
+            plugin: Plugin to use for processing (defaults to 'educational')
+            metadata: Additional metadata for the plugin
             service_url: Service URL for Cloud Tasks callback
 
         Returns:
@@ -292,11 +295,20 @@ class TranscriptService:
         # Generate unique meeting ID
         meeting_id = f"upload-{uuid.uuid4().hex[:8]}"
 
-        # Create meeting record with initial status
+        # Create meeting record with initial status, plugin, and metadata
         self.storage.create_meeting(
             meeting_id=meeting_id, user=user, meeting_url=None, bot_name=title
         )
-        self.storage.update_meeting(meeting_id, {"status": "queued"})
+
+        # Update with plugin, metadata, and status
+        update_data = {
+            "status": "queued",
+            "plugin": plugin or "educational"
+        }
+        if metadata:
+            update_data["metadata"] = metadata
+
+        self.storage.update_meeting(meeting_id, update_data)
 
         # Store transcript in GCS temp (Cloud Tasks has 100KB payload limit)
         try:
