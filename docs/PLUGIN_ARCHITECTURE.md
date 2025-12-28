@@ -49,19 +49,25 @@ class TranscriptPlugin(Protocol):
 
 ### 1. Registration
 
-Plugins are registered at application startup:
+Plugins are automatically registered at application startup in `main.py`:
 
+**Built-in Plugins** (in `src/plugins/`):
 ```python
-from src.plugins import register_plugin
-from src.plugins.educational_plugin import EducationalPlugin
+from src.plugins import register_builtin_plugins
 
-# Register built-in plugins
-register_plugin(EducationalPlugin())
-
-# Custom plugins can be registered
-from my_custom_plugin import CustomPlugin
-register_plugin(CustomPlugin())
+# Automatically registers Educational and other built-in plugins
+register_builtin_plugins()
 ```
+
+**Custom Plugins** (in `plugins/` directory):
+```python
+from src.plugins import discover_and_register_plugins
+
+# Automatically discovers and registers all plugins in plugins/ directory
+discover_and_register_plugins()
+```
+
+Custom plugins are discovered from the `plugins/` directory at the project root. Simply create a subdirectory with your plugin code - no code changes to `main.py` required!
 
 ### 2. Meeting Creation
 
@@ -230,48 +236,141 @@ Specified at meeting creation:
 
 Meeting overrides > User preferences > Plugin defaults
 
+## Plugin Configuration
+
+Plugins can be controlled via environment variables in your `.env` file:
+
+### Environment Variables
+
+```bash
+# Enable/disable built-in plugins (default: true)
+ENABLE_BUILTIN_PLUGINS=true
+
+# Enable/disable custom plugin auto-discovery (default: true)
+ENABLE_PLUGIN_DISCOVERY=true
+
+# Disable specific plugins by name (comma-separated)
+DISABLED_PLUGINS=educational,custom_plugin
+```
+
+### Configuration Examples
+
+**Disable all custom plugins (production recommended):**
+```bash
+ENABLE_BUILTIN_PLUGINS=true
+ENABLE_PLUGIN_DISCOVERY=false
+```
+
+**Disable educational plugin, use only custom plugins:**
+```bash
+ENABLE_BUILTIN_PLUGINS=true
+DISABLED_PLUGINS=educational
+ENABLE_PLUGIN_DISCOVERY=true
+```
+
+**Disable all plugins:**
+```bash
+ENABLE_BUILTIN_PLUGINS=false
+ENABLE_PLUGIN_DISCOVERY=false
+```
+
+**Note**: Plugin names come from the plugin's `name` property, not the directory or filename.
+
 ## Creating a Custom Plugin
 
-### Step 1: Implement Protocol
+### ⚠️ Security Warning
+
+**Custom plugins execute arbitrary Python code at application startup!**
+
+Custom plugins have unrestricted access to:
+- All environment variables (API keys, secrets)
+- File system (read/write/delete files)
+- Network (HTTP requests, data exfiltration)
+- Application code and memory
+- User data (transcripts, meetings)
+
+**Only install plugins you wrote or fully trust. For production deployments, set `ENABLE_PLUGIN_DISCOVERY=false`.**
+
+### Step 1: Create Plugin Directory Structure
+
+Create a subdirectory in `plugins/` at the project root:
+
+```
+plugins/
+└── my_plugin/                  # Your plugin directory name
+    ├── __init__.py             # (optional) Package marker
+    ├── plugin.py               # REQUIRED: defines get_plugin()
+    └── my_plugin_class.py      # Your plugin implementation
+```
+
+**Important**: The `plugin.py` file with `get_plugin()` function is **required** for auto-discovery.
+
+### Step 2: Implement Plugin Class
 
 ```python
-# my_plugin.py
-from src.plugins import TranscriptPlugin
+# plugins/my_plugin/my_plugin_class.py
+from src.plugins.transcript_plugin_protocol import TranscriptPlugin
 
 class MyPlugin:
     @property
     def name(self) -> str:
-        return "my_plugin"
+        return "my_plugin"  # Used in API and DISABLED_PLUGINS
 
     @property
     def display_name(self) -> str:
         return "My Custom Plugin"
 
-    # ... implement other protocol methods
+    @property
+    def description(self) -> str:
+        return "Description of what your plugin does"
+
+    @property
+    def metadata_schema(self) -> dict:
+        return {}  # Define required metadata fields
+
+    @property
+    def settings_schema(self) -> dict:
+        return {}  # Define user-configurable settings
+
+    def configure(self, settings: dict) -> None:
+        # Apply settings to your plugin
+        pass
 
     def process_transcript(self, combined_path, output_dir, llm_provider, metadata):
         # Your custom processing logic
-        return {"output": "/path/to/output.md"}
+        # Return dict with output file paths
+        return {
+            "summary": "/path/to/summary.md",
+            "output": "/path/to/output.pdf"
+        }
 ```
 
-### Step 2: Register Plugin
+### Step 3: Create Plugin Entry Point
 
 ```python
-# main.py
-from src.plugins import register_plugin
-from my_plugin import MyPlugin
+# plugins/my_plugin/plugin.py
+from .my_plugin_class import MyPlugin
 
-register_plugin(MyPlugin())
+def get_plugin():
+    """Required function that returns plugin instance."""
+    return MyPlugin()
 ```
 
-### Step 3: Use Plugin
+### Step 4: Use Plugin
+
+That's it! On application startup, your plugin will be automatically discovered and registered. Use it via the API:
 
 ```bash
 POST /api/meetings
 {
-    "plugin": "my_plugin",
+    "plugin": "my_plugin",  # Uses the 'name' property
     "metadata": { ... }
 }
+```
+
+To disable your plugin without deleting it:
+```bash
+DISABLED_PLUGINS=my_plugin
 ```
 
 ## API Endpoints
@@ -344,11 +443,51 @@ PATCH /api/users/me/plugin-settings/educational
 
 ## Security Considerations
 
-### Built-in Plugins
-- Reviewed and maintained by core team
-- Trusted execution environment
+### Current Security Model
 
-### Future: User Plugins
+**⚠️ Custom plugins execute with full application privileges!**
+
+#### Built-in Plugins
+- ✅ Reviewed and maintained by core team
+- ✅ Trusted execution environment
+- ✅ Can be disabled via `DISABLED_PLUGINS` if not needed
+
+#### Custom Plugins
+- ❌ **No sandboxing** - Full system access
+- ❌ **No code review** - Arbitrary code execution
+- ❌ **No isolation** - Same process/permissions as main app
+
+#### Security Risks
+Custom plugins can:
+- Read all environment variables (API keys, secrets)
+- Access file system (read/write/delete)
+- Make network requests (data exfiltration)
+- Modify application behavior at runtime
+- Access all user data and transcripts
+
+### Recommended Security Practices
+
+**For Production/Multi-User Deployments:**
+```bash
+# Disable custom plugin discovery entirely
+ENABLE_PLUGIN_DISCOVERY=false
+
+# Only use vetted built-in plugins
+ENABLE_BUILTIN_PLUGINS=true
+```
+
+**For Development/Single-User:**
+- Only install plugins you wrote yourself
+- Fully review any third-party plugin code before installing
+- Treat plugin installation like installing software on your computer
+
+**For Shared Environments:**
+- Never allow untrusted users to add plugins
+- Consider `plugins/` directory as sensitive infrastructure
+- Use file system permissions to restrict write access
+
+### Future Enhancements (Planned)
+The following security features are planned but **not yet implemented**:
 - Code signing and verification
 - AST parsing for forbidden patterns
 - Sandbox execution (gVisor)
@@ -402,10 +541,40 @@ def test_end_to_end_with_plugin():
 ValueError: Plugin 'custom_plugin' not found. Available plugins: educational
 ```
 
-**Solution**: Ensure plugin is registered at startup:
-```python
-register_plugin(CustomPlugin())
-```
+**Possible causes:**
+
+1. **Plugin discovery disabled**:
+   ```bash
+   # Check your .env file
+   ENABLE_PLUGIN_DISCOVERY=true  # Should be true for custom plugins
+   ```
+
+2. **Plugin is disabled**:
+   ```bash
+   # Check DISABLED_PLUGINS in .env
+   DISABLED_PLUGINS=  # Remove the plugin name from this list
+   ```
+
+3. **Missing `plugin.py` or `get_plugin()` function**:
+   ```
+   plugins/my_plugin/
+   └── plugin.py  # Must exist and define get_plugin()
+   ```
+   Check startup logs for messages like:
+   - `⚠️ Skipping my_plugin - no plugin.py found`
+   - `❌ my_plugin/plugin.py must define a get_plugin() function`
+
+4. **Plugin directory structure wrong**:
+   ```
+   # Correct structure:
+   plugins/
+   └── my_plugin/
+       └── plugin.py
+
+   # NOT this:
+   plugins/
+   └── plugin.py  # Wrong - needs to be in a subdirectory
+   ```
 
 ### Missing Metadata
 
@@ -426,7 +595,35 @@ KeyError: 'instructor_name'
 
 ### Configuration Issues
 
-Check user preferences and meeting overrides are compatible with plugin's settings schema.
+**Check multiple configuration levels:**
+
+1. **Environment variables** (`.env` file):
+   ```bash
+   ENABLE_BUILTIN_PLUGINS=true
+   ENABLE_PLUGIN_DISCOVERY=true
+   DISABLED_PLUGINS=
+   ```
+
+2. **User preferences** (Firestore):
+   - Stored per-user in `plugin_settings` field
+   - Must match plugin's `settings_schema`
+
+3. **Meeting overrides** (API request):
+   - Specified in `plugin_settings` when creating meeting
+   - Must be compatible with plugin's settings schema
+
+### Built-in Plugins Not Loading
+
+If the educational plugin isn't loading:
+```bash
+# Check .env file
+ENABLE_BUILTIN_PLUGINS=true  # Should be true
+DISABLED_PLUGINS=  # Make sure 'educational' is not in this list
+```
+
+Check startup logs for:
+- `📚 Built-in plugins disabled (ENABLE_BUILTIN_PLUGINS=false)`
+- `⏭️ Skipped 'educational' - disabled (DISABLED_PLUGINS)`
 
 ---
 

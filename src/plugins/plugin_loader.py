@@ -14,9 +14,30 @@ from typing import List, Optional
 from .plugin_registry import register_plugin
 
 
+def _is_plugin_disabled(plugin_name: str) -> bool:
+    """
+    Check if a plugin is disabled via DISABLED_PLUGINS env var.
+
+    Args:
+        plugin_name: Name of the plugin to check (uses plugin.name property)
+
+    Returns:
+        True if plugin is in the disabled list, False otherwise
+    """
+    disabled_plugins = os.getenv('DISABLED_PLUGINS', '').strip()
+    if not disabled_plugins:
+        return False
+
+    disabled_list = [p.strip().lower() for p in disabled_plugins.split(',')]
+    return plugin_name.lower() in disabled_list
+
+
 def discover_and_register_plugins(plugins_base_dir: Optional[str] = None) -> List[str]:
     """
     Auto-discover and register plugins from plugins/ directory.
+
+    Controlled by ENABLE_PLUGIN_DISCOVERY environment variable (default: true).
+    Individual plugins can be disabled via DISABLED_PLUGINS env var.
 
     Directory structure expected:
     ```
@@ -48,6 +69,11 @@ def discover_and_register_plugins(plugins_base_dir: Optional[str] = None) -> Lis
         return TherapyPlugin()
     ```
     """
+    # Check if plugin discovery is enabled
+    if os.getenv('ENABLE_PLUGIN_DISCOVERY', 'true').lower() != 'true':
+        print("📦 Plugin auto-discovery disabled (ENABLE_PLUGIN_DISCOVERY=false)")
+        return []
+
     if plugins_base_dir is None:
         # Default to plugins/ directory in project root
         # This file is in: meeting-transcription/src/plugins/plugin_loader.py
@@ -66,6 +92,10 @@ def discover_and_register_plugins(plugins_base_dir: Optional[str] = None) -> Lis
         return registered_plugins
 
     print(f"🔍 Discovering plugins in {plugins_base_dir}")
+    print("⚠️  WARNING: Custom plugins execute arbitrary Python code!")
+    print("   Only load plugins you wrote or fully trust.")
+    print("   See plugins/README.md for security information.")
+    print()
 
     # Iterate through directories in plugins/
     for plugin_dir in plugins_base_dir.iterdir():
@@ -107,11 +137,16 @@ def discover_and_register_plugins(plugins_base_dir: Optional[str] = None) -> Lis
             # Get plugin instance
             plugin = module.get_plugin()
 
+            # Check if plugin is disabled
+            if _is_plugin_disabled(plugin.name):
+                print(f"⏭️  Skipped {plugin_dir.name}/ - '{plugin.name}' is disabled (DISABLED_PLUGINS)")
+                continue
+
             # Register the plugin
             register_plugin(plugin)
             registered_plugins.append(plugin.name)
 
-            print(f"✅ Loaded plugin from {plugin_dir.name}/")
+            print(f"✅ Loaded plugin '{plugin.name}' from {plugin_dir.name}/")
 
         except Exception as e:
             print(f"❌ Error loading plugin from {plugin_dir.name}: {e}")
@@ -131,10 +166,22 @@ def register_builtin_plugins():
     """
     Register built-in plugins that come with meeting-transcription.
 
-    This is separate from auto-discovery to ensure core plugins are always available.
+    Controlled by ENABLE_BUILTIN_PLUGINS environment variable (default: true).
+    Individual plugins can be disabled via DISABLED_PLUGINS env var.
     """
+    # Check if built-in plugins are enabled
+    if os.getenv('ENABLE_BUILTIN_PLUGINS', 'true').lower() != 'true':
+        print("📚 Built-in plugins disabled (ENABLE_BUILTIN_PLUGINS=false)")
+        return
+
     from .educational_plugin import EducationalPlugin
 
     print("📚 Registering built-in plugins...")
-    register_plugin(EducationalPlugin())
-    print("✅ Registered educational plugin")
+
+    # Educational plugin
+    educational = EducationalPlugin()
+    if _is_plugin_disabled(educational.name):
+        print(f"⏭️  Skipped '{educational.name}' - disabled (DISABLED_PLUGINS)")
+    else:
+        register_plugin(educational)
+        print(f"✅ Registered '{educational.name}' plugin")
