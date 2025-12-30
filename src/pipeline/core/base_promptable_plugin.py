@@ -65,9 +65,9 @@ class BasePromptablePlugin(ABC):
         print("🎯 Building extraction prompt...")
         prompt = self.get_extraction_prompt(transcript_text, metadata)
 
-        # Call LLM
-        print(f"🤖 Calling LLM ({llm_provider})...")
-        llm_client = LLMClient(provider=llm_provider)
+        # Call LLM (provider auto-detected from AI_MODEL env var)
+        print(f"🤖 Calling LLM...")
+        llm_client = LLMClient()
 
         response_schema = self.get_response_schema()
         if response_schema:

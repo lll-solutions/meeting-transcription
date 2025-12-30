@@ -7,7 +7,7 @@ readme = "README.md"
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.12,<3.14"
 
 # Web Framework
 flask = "^3.0.0"
@@ -20,9 +20,8 @@ svix = "^1.0.0"                      # For Recall.ai webhook signature verificat
 python-dotenv = "^1.0.0"
 
 # LLM Providers
-openai = "^1.0.0"                    # For OpenAI and Azure OpenAI
-anthropic = "^0.18.0"                # For Anthropic Claude
-google-genai = "^0.3.0"              # For Vertex AI (Gemini) - new SDK
+google-genai = "^1.56.0"                 # For Google Vertex AI (Gemini)
+aisuite = {git = "https://github.com/kurtn718/aisuite.git", rev = "add-gemini3-support", extras = ["openai", "anthropic", "google"]}
 
 # PDF Generation
 weasyprint = "^60.0"                 # HTML/CSS to PDF
@@ -113,7 +112,8 @@ disallow_untyped_defs = false
 [[tool.mypy.overrides]]
 module = [
     "anthropic.*",
-    "google.genai.*",
+    "aisuite.*",
+    "google.cloud.aiplatform.*",
     "weasyprint.*",
     "schedule.*",
     "firebase_admin.*",

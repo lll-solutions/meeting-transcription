@@ -59,31 +59,20 @@ except ImportError:
 class EducationalSummarizer:
     """Summarize educational content using LLM."""
 
-    def __init__(self, provider: str = 'vertex_ai', model: str = None):
+    def __init__(self, provider: str = None, model: str = None):
         """
-        Initialize summarizer with LLM provider.
+        Initialize summarizer with LLM client.
 
         Args:
-            provider: 'vertex_ai' (default), 'azure_openai', 'openai', or 'anthropic'
-            model: Model name (optional, uses defaults)
+            provider: Deprecated - kept for backwards compatibility
+            model: Model override (e.g., 'google:gemini-3-pro-preview')
         """
-        self.provider = provider
-        self.client = None
+        # Use new LLMClient which auto-detects from AI_MODEL env var
+        from src.utils.llm_client import LLMClient
+        self.client = LLMClient(model=model)
         self.model = model
 
-        if provider == 'vertex_ai':
-            self._init_vertex_ai(model)
-        elif provider == 'azure_openai':
-            self._init_azure_openai(model)
-        elif provider == 'openai':
-            self._init_openai(model)
-        elif provider == 'anthropic':
-            self._init_anthropic(model)
-        else:
-            raise ValueError(
-                f"Unknown provider: {provider}. "
-                "Use 'vertex_ai', 'azure_openai', 'openai', or 'anthropic'"
-            )
+        # Old provider-specific initialization removed - now using LLMClient
 
     def _init_vertex_ai(self, model: str = None):
         """Initialize Google Vertex AI (Gemini)."""
@@ -167,7 +156,7 @@ class EducationalSummarizer:
 
     def call_llm(self, prompt: str, max_tokens: int = 4096) -> str:
         """
-        Call LLM with prompt.
+        Call LLM with prompt using unified LLMClient.
 
         Args:
             prompt: The prompt to send
@@ -176,12 +165,11 @@ class EducationalSummarizer:
         Returns:
             LLM response text
         """
-        if self.provider == 'vertex_ai':
-            return self._call_vertex_ai(prompt, max_tokens)
-        elif self.provider == 'anthropic':
-            return self._call_anthropic(prompt, max_tokens)
-        elif self.provider in ['openai', 'azure_openai']:
-            return self._call_openai(prompt, max_tokens)
+        try:
+            return self.client.call(prompt=prompt, max_tokens=max_tokens, temperature=0.7)
+        except Exception as e:
+            print(f"❌ LLM API error: {e}")
+            return None
 
     def _call_vertex_ai(self, prompt: str, max_tokens: int) -> str:
         """Call Vertex AI (Gemini)."""

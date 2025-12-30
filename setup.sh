@@ -322,67 +322,66 @@ else
     echo -e "${YELLOW}⚠️  Skipping Recall.ai API key (bot joining disabled)${NC}"
 fi
 
-# Step 6b: LLM Provider Selection
+# Step 6b: AI Model Configuration
 echo ""
-echo -e "${BLUE}Step 6b: LLM Provider Configuration${NC}"
+echo -e "${BLUE}Step 6b: AI Model Configuration${NC}"
 echo ""
 
-echo "Choose your AI provider for generating summaries:"
+echo "Choose your AI model for generating summaries:"
 echo ""
-echo "  1) Vertex AI (Google Gemini) - Recommended for GCP"
+echo "  1) Google Gemini 3 Pro - Recommended for GCP"
 echo "     • Auto-authenticated on Cloud Run"
 echo "     • No additional API keys needed"
-echo "     • Uses gemini-3-pro-preview model"
+echo "     • Latest Gemini 3 model via Vertex AI"
 echo ""
-echo "  2) Azure OpenAI (GPT-4)"
+echo "  2) Azure OpenAI (GPT-4o)"
 echo "     • Requires Azure OpenAI resource"
-echo "     • Uses gpt-4o model"
 echo "     • Great if you have existing Azure investment"
 echo ""
-read -p "Choice [1]: " LLM_CHOICE
-LLM_CHOICE=${LLM_CHOICE:-1}
+read -p "Choice [1]: " MODEL_CHOICE
+MODEL_CHOICE=${MODEL_CHOICE:-1}
 
-if [ "$LLM_CHOICE" = "2" ]; then
-    LLM_PROVIDER="azure_openai"
+if [ "$MODEL_CHOICE" = "2" ]; then
+    AI_MODEL="openai:gpt-4o"
     echo ""
     echo -e "${YELLOW}Setting up Azure OpenAI...${NC}"
     echo ""
     echo "You'll need your Azure OpenAI credentials."
     echo "Find them in Azure Portal → Your OpenAI Resource → Keys and Endpoint"
     echo ""
-    
-    read -sp "Enter your Azure OpenAI API Key (hidden): " AZURE_KEY
+
+    read -sp "Enter your Azure OpenAI API Key (hidden): " OPENAI_KEY
     echo ""
-    read -p "Enter your Azure OpenAI Endpoint (e.g., https://your-resource.openai.azure.com/): " AZURE_ENDPOINT
-    read -p "Enter your Azure OpenAI Deployment name [gpt-4o]: " AZURE_DEPLOYMENT
-    AZURE_DEPLOYMENT=${AZURE_DEPLOYMENT:-gpt-4o}
-    
+    read -p "Enter your Azure OpenAI Endpoint (e.g., https://your-resource.openai.azure.com/): " OPENAI_ENDPOINT
+    read -p "Enter your Azure OpenAI Deployment name [gpt-4o]: " OPENAI_DEPLOYMENT
+    OPENAI_DEPLOYMENT=${OPENAI_DEPLOYMENT:-gpt-4o}
+
     echo ""
     echo "Storing Azure credentials in Secret Manager..."
-    
-    # Create Azure secrets
-    echo -n "$AZURE_KEY" | gcloud secrets create AZURE_OPENAI_API_KEY --data-file=- 2>/dev/null || {
-        echo -n "$AZURE_KEY" | gcloud secrets versions add AZURE_OPENAI_API_KEY --data-file=-
+
+    # Create OpenAI secrets
+    echo -n "$OPENAI_KEY" | gcloud secrets create OPENAI_API_KEY --data-file=- 2>/dev/null || {
+        echo -n "$OPENAI_KEY" | gcloud secrets versions add OPENAI_API_KEY --data-file=-
     }
-    echo -n "$AZURE_ENDPOINT" | gcloud secrets create AZURE_OPENAI_ENDPOINT --data-file=- 2>/dev/null || {
-        echo -n "$AZURE_ENDPOINT" | gcloud secrets versions add AZURE_OPENAI_ENDPOINT --data-file=-
+    echo -n "$OPENAI_ENDPOINT" | gcloud secrets create OPENAI_ENDPOINT --data-file=- 2>/dev/null || {
+        echo -n "$OPENAI_ENDPOINT" | gcloud secrets versions add OPENAI_ENDPOINT --data-file=-
     }
-    echo -n "$AZURE_DEPLOYMENT" | gcloud secrets create AZURE_OPENAI_DEPLOYMENT --data-file=- 2>/dev/null || {
-        echo -n "$AZURE_DEPLOYMENT" | gcloud secrets versions add AZURE_OPENAI_DEPLOYMENT --data-file=-
+    echo -n "$OPENAI_DEPLOYMENT" | gcloud secrets create OPENAI_DEPLOYMENT --data-file=- 2>/dev/null || {
+        echo -n "$OPENAI_DEPLOYMENT" | gcloud secrets versions add OPENAI_DEPLOYMENT --data-file=-
     }
-    
+
     # Grant access to Cloud Run service account
-    for SECRET in AZURE_OPENAI_API_KEY AZURE_OPENAI_ENDPOINT AZURE_OPENAI_DEPLOYMENT; do
+    for SECRET in OPENAI_API_KEY OPENAI_ENDPOINT OPENAI_DEPLOYMENT; do
         gcloud secrets add-iam-policy-binding $SECRET \
             --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
             --role="roles/secretmanager.secretAccessor" \
             --quiet 2>/dev/null || true
     done
-    
+
     echo -e "${GREEN}✓ Azure OpenAI credentials stored securely${NC}"
 else
-    LLM_PROVIDER="vertex_ai"
-    echo -e "${GREEN}✓ Using Vertex AI (Gemini) - auto-authenticated on GCP${NC}"
+    AI_MODEL="google:gemini-3-pro-preview"
+    echo -e "${GREEN}✓ Using Google Gemini 3 Pro - auto-authenticated on GCP${NC}"
 fi
 
 # Step 6c: Admin User Setup
@@ -459,7 +458,7 @@ cd "$SCRIPT_DIR"
 echo "Deploying with Identity Platform Authentication..."
 
 # Build environment variables (SERVICE_URL and WEBHOOK_URL will be set after deployment)
-ENV_VARS="LLM_PROVIDER=${LLM_PROVIDER},GCP_REGION=us-central1,OUTPUT_BUCKET=${BUCKET_NAME},RETENTION_DAYS=30"
+ENV_VARS="AI_MODEL=${AI_MODEL},GOOGLE_REGION=global,OUTPUT_BUCKET=${BUCKET_NAME},RETENTION_DAYS=30"
 ENV_VARS="${ENV_VARS},AUTH_PROVIDER=db,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GCP_PROJECT_NUMBER=${PROJECT_NUMBER}"
 ENV_VARS="${ENV_VARS},FEATURES_BOT_JOINING=${FEATURES_BOT_JOINING}"
 
@@ -477,12 +476,12 @@ if [ "$FEATURES_BOT_JOINING" = "true" ]; then
     SECRETS_STRING="${SECRETS_STRING},RECALL_API_KEY=RECALL_API_KEY:latest"
 fi
 
-# Add Azure OpenAI secrets if using Azure
-if [ "$LLM_PROVIDER" = "azure_openai" ]; then
-    echo "Including Azure OpenAI secrets from Secret Manager"
-    SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_API_KEY=AZURE_OPENAI_API_KEY:latest"
-    SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_ENDPOINT=AZURE_OPENAI_ENDPOINT:latest"
-    SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_DEPLOYMENT=AZURE_OPENAI_DEPLOYMENT:latest"
+# Add OpenAI secrets if using OpenAI (Azure or direct)
+if [ "$MODEL_CHOICE" = "2" ]; then
+    echo "Including OpenAI secrets from Secret Manager"
+    SECRETS_STRING="${SECRETS_STRING},OPENAI_API_KEY=OPENAI_API_KEY:latest"
+    SECRETS_STRING="${SECRETS_STRING},OPENAI_ENDPOINT=OPENAI_ENDPOINT:latest"
+    SECRETS_STRING="${SECRETS_STRING},OPENAI_DEPLOYMENT=OPENAI_DEPLOYMENT:latest"
 fi
 
 gcloud run deploy meeting-transcription \
@@ -553,14 +552,14 @@ echo "  Password: $ADMIN_PASSWORD"
 echo ""
 echo "  (Save these credentials!)"
 
-# Show LLM provider info
+# Show AI model info
 echo ""
-if [ "$LLM_PROVIDER" = "azure_openai" ]; then
-    echo -e "${GREEN}🤖 AI Provider: Azure OpenAI (GPT-4)${NC}"
-    echo "   Endpoint: $AZURE_ENDPOINT"
-    echo "   Deployment: $AZURE_DEPLOYMENT"
+if [ "$MODEL_CHOICE" = "2" ]; then
+    echo -e "${GREEN}🤖 AI Model: Azure OpenAI (GPT-4o)${NC}"
+    echo "   Endpoint: $OPENAI_ENDPOINT"
+    echo "   Deployment: $OPENAI_DEPLOYMENT"
 else
-    echo -e "${GREEN}🤖 AI Provider: Vertex AI (Google Gemini)${NC}"
+    echo -e "${GREEN}🤖 AI Model: Google Gemini 3 Pro${NC}"
     echo "   Auto-authenticated on Cloud Run"
 fi
 echo ""
@@ -726,18 +725,19 @@ WEBHOOK_URL=${SERVICE_URL}/webhook/recall
 AUTH_PROVIDER=db
 ADMIN_EMAIL=$ADMIN_EMAIL
 
-# LLM Provider
-LLM_PROVIDER=$LLM_PROVIDER
+# AI Model
+AI_MODEL=$AI_MODEL
+GOOGLE_REGION=global
 
 # Features
 FEATURES_BOT_JOINING=$FEATURES_BOT_JOINING
 EOF
 
-# Add Azure info if applicable
-if [ "$LLM_PROVIDER" = "azure_openai" ]; then
+# Add OpenAI info if applicable
+if [ "$MODEL_CHOICE" = "2" ]; then
     cat >> .env.deployed << EOF
-AZURE_OPENAI_ENDPOINT=$AZURE_ENDPOINT
-AZURE_OPENAI_DEPLOYMENT=$AZURE_DEPLOYMENT
+OPENAI_ENDPOINT=$OPENAI_ENDPOINT
+OPENAI_DEPLOYMENT=$OPENAI_DEPLOYMENT
 # API Key stored in Secret Manager
 EOF
 fi

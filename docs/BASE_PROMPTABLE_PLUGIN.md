@@ -26,8 +26,12 @@ Unified interface for calling LLM providers:
 ```python
 from src.utils.llm_client import LLMClient
 
-# Initialize
-client = LLMClient(provider='vertex_ai')  # or 'anthropic', 'openai', 'azure_openai'
+# Initialize (provider auto-detected from AI_MODEL env var)
+# Set AI_MODEL=google:gemini-3-pro-preview (or anthropic:claude-sonnet-4-5, openai:gpt-4o)
+client = LLMClient()
+
+# Or override the model
+client = LLMClient(model="google:gemini-3-pro-preview")
 
 # Simple text call
 response = client.call(prompt="Analyze this...", max_tokens=4096)

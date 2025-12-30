@@ -154,22 +154,68 @@ if gcloud secrets describe RECALL_WEBHOOK_SECRET --quiet 2>/dev/null; then
     fi
 fi
 
-# Add Azure secrets if using Azure OpenAI
-if [ "$LLM_PROVIDER" = "azure_openai" ]; then
+# Add provider-specific secrets if they exist
+# OpenAI (direct or Azure)
+if gcloud secrets describe OPENAI_API_KEY --quiet 2>/dev/null; then
     if [ -z "$SECRETS_STRING" ]; then
-        SECRETS_STRING="AZURE_OPENAI_API_KEY=AZURE_OPENAI_API_KEY:latest"
+        SECRETS_STRING="OPENAI_API_KEY=OPENAI_API_KEY:latest"
     else
-        SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_API_KEY=AZURE_OPENAI_API_KEY:latest"
+        SECRETS_STRING="${SECRETS_STRING},OPENAI_API_KEY=OPENAI_API_KEY:latest"
     fi
-    SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_ENDPOINT=AZURE_OPENAI_ENDPOINT:latest"
-    SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_DEPLOYMENT=AZURE_OPENAI_DEPLOYMENT:latest"
+
+    # Grant permissions
+    gcloud secrets add-iam-policy-binding OPENAI_API_KEY \
+        --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor" \
+        --quiet 2>/dev/null || true
+fi
+
+if gcloud secrets describe OPENAI_ENDPOINT --quiet 2>/dev/null; then
+    SECRETS_STRING="${SECRETS_STRING},OPENAI_ENDPOINT=OPENAI_ENDPOINT:latest"
+    gcloud secrets add-iam-policy-binding OPENAI_ENDPOINT \
+        --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor" \
+        --quiet 2>/dev/null || true
+fi
+
+if gcloud secrets describe OPENAI_DEPLOYMENT --quiet 2>/dev/null; then
+    SECRETS_STRING="${SECRETS_STRING},OPENAI_DEPLOYMENT=OPENAI_DEPLOYMENT:latest"
+    gcloud secrets add-iam-policy-binding OPENAI_DEPLOYMENT \
+        --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor" \
+        --quiet 2>/dev/null || true
+fi
+
+# Anthropic (direct or Azure)
+if gcloud secrets describe ANTHROPIC_API_KEY --quiet 2>/dev/null; then
+    if [ -z "$SECRETS_STRING" ]; then
+        SECRETS_STRING="ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest"
+    else
+        SECRETS_STRING="${SECRETS_STRING},ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest"
+    fi
+
+    gcloud secrets add-iam-policy-binding ANTHROPIC_API_KEY \
+        --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor" \
+        --quiet 2>/dev/null || true
+fi
+
+if gcloud secrets describe ANTHROPIC_ENDPOINT --quiet 2>/dev/null; then
+    SECRETS_STRING="${SECRETS_STRING},ANTHROPIC_ENDPOINT=ANTHROPIC_ENDPOINT:latest"
+    gcloud secrets add-iam-policy-binding ANTHROPIC_ENDPOINT \
+        --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor" \
+        --quiet 2>/dev/null || true
 fi
 
 # Get bucket name
 BUCKET_NAME="${PROJECT_ID}-meeting-outputs"
 
 # Build environment variables
-ENV_VARS="LLM_PROVIDER=${LLM_PROVIDER},GCP_REGION=us-central1,OUTPUT_BUCKET=${BUCKET_NAME},RETENTION_DAYS=30"
+# Default to Google Gemini 3 if AI_MODEL not set
+AI_MODEL=${AI_MODEL:-google:gemini-3-pro-preview}
+
+ENV_VARS="AI_MODEL=${AI_MODEL},GOOGLE_REGION=global,OUTPUT_BUCKET=${BUCKET_NAME},RETENTION_DAYS=30"
 ENV_VARS="${ENV_VARS},AUTH_PROVIDER=db,GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
 ENV_VARS="${ENV_VARS},SERVICE_URL=${SERVICE_URL},WEBHOOK_URL=${SERVICE_URL}/webhook/recall,GCP_PROJECT_NUMBER=${PROJECT_NUMBER}"
 

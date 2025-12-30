@@ -1,60 +1,37 @@
 """
-LLM Client Utility
+LLM Client using aisuite for multi-provider support.
 
-Unified interface for calling multiple LLM providers:
-- vertex_ai: Google Vertex AI (Gemini)
-- anthropic: Anthropic (Claude)
-- openai: OpenAI API (GPT-4)
-- azure_openai: Azure OpenAI (GPT-4)
+Supports multiple providers configured via environment variables:
+- OpenAI (direct or Azure): OPENAI_API_KEY, OPENAI_ENDPOINT (optional for Azure)
+- Anthropic (direct or Azure): ANTHROPIC_API_KEY, ANTHROPIC_ENDPOINT (optional for Azure)
+- Google Vertex AI: GOOGLE_CLOUD_PROJECT, GOOGLE_REGION
 
-Used by BasePromptablePlugin and educational summarization pipeline.
+Set AI_MODEL environment variable to choose which model to use:
+- AI_MODEL=google:gemini-3-pro-preview
+- AI_MODEL=anthropic:claude-sonnet-4-5
+- AI_MODEL=openai:gpt-4o
 """
 import json
 import os
 from typing import Dict, Any, Optional
 
-# Load environment variables
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
+    import aisuite as ai
+    HAS_AISUITE = True
 except ImportError:
-    pass
-
-# Check for LLM provider availability
-HAS_VERTEX_AI = False
-HAS_ANTHROPIC = False
-HAS_OPENAI = False
-
-try:
-    from google import genai
-    from google.genai import types
-    HAS_VERTEX_AI = True
-except ImportError as e:
-    print(f"⚠️ google.genai not available: {e}")
-except Exception as e:
-    print(f"❌ Error importing google.genai: {e}")
-
-try:
-    import anthropic
-    HAS_ANTHROPIC = True
-except ImportError:
-    pass
-
-try:
-    import openai
-    HAS_OPENAI = True
-except ImportError:
-    pass
+    HAS_AISUITE = False
+    print("⚠️ aisuite not available")
 
 
 class LLMClient:
     """
-    Unified client for calling multiple LLM providers.
+    Unified client for calling multiple LLM providers via aisuite.
 
-    Handles provider initialization, API calls, and response parsing.
+    Auto-configures all providers from environment variables.
+    Switch models using AI_MODEL environment variable.
 
     Usage:
-        client = LLMClient(provider='vertex_ai')
+        client = LLMClient()
         response = client.call(prompt="Explain quantum physics")
 
         # With structured output
@@ -64,106 +41,102 @@ class LLMClient:
         )
     """
 
-    def __init__(self, provider: str = 'vertex_ai', model: Optional[str] = None):
+    def __init__(self, model: Optional[str] = None):
         """
-        Initialize LLM client with provider.
+        Initialize LLM client with all configured providers.
 
         Args:
-            provider: 'vertex_ai', 'anthropic', 'openai', or 'azure_openai'
-            model: Model name (optional, uses provider defaults)
+            model: Override AI_MODEL env var (optional)
         """
-        self.provider = provider
-        self.client = None
-        self.model = model
+        if not HAS_AISUITE:
+            raise ImportError(
+                "aisuite not installed. Run: poetry add aisuite"
+            )
 
-        if provider == 'vertex_ai':
-            self._init_vertex_ai(model)
-        elif provider == 'anthropic':
-            self._init_anthropic(model)
-        elif provider == 'openai':
-            self._init_openai(model)
-        elif provider == 'azure_openai':
-            self._init_azure_openai(model)
-        else:
+        # Build provider configs from environment variables
+        provider_configs = {}
+
+        # Google Vertex AI
+        google_project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT") or os.getenv("GOOGLE_PROJECT_ID")
+        if google_project:
+            # aisuite expects specific env var names, so set them
+            os.environ["GOOGLE_PROJECT_ID"] = google_project
+            os.environ["GOOGLE_REGION"] = os.getenv("GOOGLE_REGION") or os.getenv("GCP_REGION", "global")
+
+            # Build config for aisuite
+            provider_configs["google"] = {
+                "project_id": google_project,
+                "region": os.environ["GOOGLE_REGION"],
+            }
+
+        # OpenAI (direct or Azure)
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            provider_configs["openai"] = {"api_key": openai_key}
+
+            # Check if using Azure OpenAI
+            openai_endpoint = os.getenv("OPENAI_ENDPOINT")
+            if openai_endpoint:
+                deployment = os.getenv("OPENAI_DEPLOYMENT", "gpt-4o")
+                provider_configs["openai"]["base_url"] = f"{openai_endpoint}openai/deployments/{deployment}"
+                provider_configs["openai"]["default_query"] = {
+                    "api-version": os.getenv("OPENAI_API_VERSION", "2024-05-01-preview")
+                }
+
+        # Anthropic (direct or Azure)
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        if anthropic_key:
+            provider_configs["anthropic"] = {"api_key": anthropic_key}
+
+            # Check if using Azure Claude
+            anthropic_endpoint = os.getenv("ANTHROPIC_ENDPOINT")
+            if anthropic_endpoint:
+                provider_configs["anthropic"]["base_url"] = anthropic_endpoint
+                provider_configs["anthropic"]["default_headers"] = {
+                    "anthropic-version": "2023-06-01"
+                }
+
+        if not provider_configs:
             raise ValueError(
-                f"Unknown provider: {provider}. "
-                "Supported: 'vertex_ai', 'anthropic', 'openai', 'azure_openai'"
+                "No LLM provider configured. Set one of:\n"
+                "  - GOOGLE_CLOUD_PROJECT (+ GOOGLE_REGION)\n"
+                "  - OPENAI_API_KEY (+ OPENAI_ENDPOINT for Azure)\n"
+                "  - ANTHROPIC_API_KEY (+ ANTHROPIC_ENDPOINT for Azure)"
             )
 
-    def _init_vertex_ai(self, model: Optional[str] = None):
-        """Initialize Google Vertex AI (Gemini)."""
-        if not HAS_VERTEX_AI:
-            raise ImportError(
-                "google-genai not installed. Run: pip install google-genai"
-            )
+        # Initialize aisuite client with all configured providers
+        self.client = ai.Client(provider_configs)
 
-        project = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("GCP_PROJECT")
+        # Get model from parameter or environment
+        self.model = model or os.getenv("AI_MODEL", "google:gemini-3-pro-preview")
 
-        self.client = genai.Client(vertexai=True)
-        self.model = model or os.getenv("VERTEX_AI_MODEL", "gemini-3-pro-preview")
+        # Print which provider/model we're using
+        provider_name = self.model.split(":")[0] if ":" in self.model else "unknown"
+        model_name = self.model.split(":")[1] if ":" in self.model else self.model
 
-        print(f"✅ Using Vertex AI: {self.model}")
-        if project:
-            print(f"   Project: {project}")
+        emoji_map = {
+            "google": "💎",
+            "openai": "🤖",
+            "anthropic": "🎭"
+        }
+        emoji = emoji_map.get(provider_name, "🔮")
 
-    def _init_anthropic(self, model: Optional[str] = None):
-        """Initialize Anthropic Claude."""
-        if not HAS_ANTHROPIC:
-            raise ImportError(
-                "anthropic package not installed. Run: pip install anthropic"
-            )
+        print(f"{emoji} Using {provider_name}: {model_name}")
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not found in environment")
-
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = model or os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
-
-        print(f"✅ Using Anthropic: {self.model}")
-
-    def _init_openai(self, model: Optional[str] = None):
-        """Initialize OpenAI."""
-        if not HAS_OPENAI:
-            raise ImportError(
-                "openai package not installed. Run: pip install openai"
-            )
-
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY not found in environment")
-
-        self.client = openai.OpenAI(api_key=api_key)
-        self.model = model or os.getenv("OPENAI_MODEL", "gpt-4-turbo")
-
-        print(f"✅ Using OpenAI: {self.model}")
-
-    def _init_azure_openai(self, model: Optional[str] = None):
-        """Initialize Azure OpenAI."""
-        if not HAS_OPENAI:
-            raise ImportError(
-                "openai package not installed. Run: pip install openai"
-            )
-
-        azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        azure_deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-        azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
-
-        if not azure_api_key or not azure_endpoint:
-            raise ValueError(
-                "AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT required"
-            )
-
-        self.client = openai.AzureOpenAI(
-            api_key=azure_api_key,
-            azure_endpoint=azure_endpoint,
-            api_version=azure_api_version
-        )
-        self.model = model or azure_deployment or "gpt-4o"
-
-        print(f"✅ Using Azure OpenAI: {azure_endpoint}")
-        print(f"   Deployment: {self.model}")
+        # Print config details
+        if provider_name == "google" and "google" in provider_configs:
+            print(f"   Project: {provider_configs['google']['project_id']}")
+            print(f"   Region: {provider_configs['google']['region']}")
+        elif provider_name == "openai" and "openai" in provider_configs:
+            if "base_url" in provider_configs["openai"]:
+                print(f"   Azure OpenAI: {os.getenv('OPENAI_ENDPOINT')}")
+            else:
+                print(f"   Direct OpenAI API")
+        elif provider_name == "anthropic" and "anthropic" in provider_configs:
+            if "base_url" in provider_configs["anthropic"]:
+                print(f"   Azure Claude: {os.getenv('ANTHROPIC_ENDPOINT')}")
+            else:
+                print(f"   Direct Anthropic API")
 
     def call(self, prompt: str, max_tokens: int = 4096, temperature: float = 0.7) -> str:
         """
@@ -177,14 +150,16 @@ class LLMClient:
         Returns:
             LLM response as text string
         """
-        if self.provider == 'vertex_ai':
-            return self._call_vertex_ai(prompt, max_tokens, temperature)
-        elif self.provider == 'anthropic':
-            return self._call_anthropic(prompt, max_tokens, temperature)
-        elif self.provider in ['openai', 'azure_openai']:
-            return self._call_openai(prompt, max_tokens, temperature)
-        else:
-            raise ValueError(f"Provider {self.provider} not initialized")
+        messages = [{"role": "user", "content": prompt}]
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature
+        )
+
+        return response.choices[0].message.content
 
     def call_structured(
         self,
@@ -196,9 +171,6 @@ class LLMClient:
         """
         Call LLM with prompt and return structured JSON response.
 
-        Uses provider-specific structured output features when available.
-        Falls back to JSON parsing from text response.
-
         Args:
             prompt: The prompt to send
             response_schema: JSON schema for expected response structure
@@ -208,137 +180,15 @@ class LLMClient:
         Returns:
             Parsed JSON response as dictionary
         """
-        if self.provider == 'vertex_ai':
-            return self._call_vertex_ai_structured(prompt, response_schema, max_tokens, temperature)
-        elif self.provider == 'anthropic':
-            return self._call_anthropic_structured(prompt, response_schema, max_tokens, temperature)
-        elif self.provider in ['openai', 'azure_openai']:
-            return self._call_openai_structured(prompt, response_schema, max_tokens, temperature)
-        else:
-            raise ValueError(f"Provider {self.provider} not initialized")
-
-    def _call_vertex_ai(self, prompt: str, max_tokens: int, temperature: float) -> str:
-        """Call Vertex AI (Gemini) for text response."""
-        contents = [
-            types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=prompt)]
-            )
-        ]
-
-        generation_config = types.GenerateContentConfig(
-            max_output_tokens=max_tokens,
-            temperature=temperature,
+        # Add JSON instruction to prompt
+        json_prompt = (
+            f"{prompt}\n\n"
+            f"Respond with valid JSON matching this schema:\n"
+            f"{json.dumps(response_schema, indent=2)}"
         )
 
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=contents,
-            config=generation_config
-        )
-
-        return response.text
-
-    def _call_vertex_ai_structured(
-        self,
-        prompt: str,
-        response_schema: Dict[str, Any],
-        max_tokens: int,
-        temperature: float
-    ) -> Dict[str, Any]:
-        """Call Vertex AI (Gemini) for structured JSON response."""
-        contents = [
-            types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=prompt)]
-            )
-        ]
-
-        generation_config = types.GenerateContentConfig(
-            max_output_tokens=max_tokens,
-            temperature=temperature,
-            response_mime_type="application/json"
-        )
-
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=contents,
-            config=generation_config
-        )
-
-        return self._parse_json_response(response.text)
-
-    def _call_anthropic(self, prompt: str, max_tokens: int, temperature: float) -> str:
-        """Call Anthropic Claude for text response."""
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text
-
-    def _call_anthropic_structured(
-        self,
-        prompt: str,
-        response_schema: Dict[str, Any],
-        max_tokens: int,
-        temperature: float
-    ) -> Dict[str, Any]:
-        """Call Anthropic Claude for structured JSON response using tool calling."""
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            tools=[{
-                "name": "extract_structured_data",
-                "description": "Extract structured data according to schema",
-                "input_schema": response_schema
-            }],
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        # Extract from tool use block
-        for block in response.content:
-            if block.type == "tool_use":
-                return block.input
-
-        # Fallback: try to parse text as JSON
-        return self._parse_json_response(response.content[0].text)
-
-    def _call_openai(self, prompt: str, max_tokens: int, temperature: float) -> str:
-        """Call OpenAI or Azure OpenAI for text response."""
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=temperature
-        )
-        return response.choices[0].message.content
-
-    def _call_openai_structured(
-        self,
-        prompt: str,
-        response_schema: Dict[str, Any],
-        max_tokens: int,
-        temperature: float
-    ) -> Dict[str, Any]:
-        """Call OpenAI or Azure OpenAI for structured JSON response."""
-        # Note: Azure OpenAI may not support structured outputs yet
-        # Fall back to JSON mode if structured outputs not available
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=max_tokens,
-                temperature=temperature,
-                response_format={"type": "json_object"}
-            )
-            return json.loads(response.choices[0].message.content)
-        except Exception:
-            # Fallback: regular call with JSON parsing
-            text_response = self._call_openai(prompt, max_tokens, temperature)
-            return self._parse_json_response(text_response)
+        response_text = self.call(json_prompt, max_tokens, temperature)
+        return self._parse_json_response(response_text)
 
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
         """
