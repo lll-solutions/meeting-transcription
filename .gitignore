@@ -13,10 +13,14 @@ dist/
 *.egg-info/
 .eggs/
 
+# Generated from Poetry - do not commit
+requirements.txt
+
 # Environment variables (contains secrets!)
 .env
 .env.local
 .env.*.local
+.env.deployed
 
 # IDE
 .vscode/
@@ -38,7 +42,6 @@ htmlcov/
 # Local development outputs
 outputs/
 *.json
-!app.json
 *.pdf
 *.md
 !README.md
