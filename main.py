@@ -76,6 +76,62 @@ limiter = Limiter(
     strategy="fixed-window"
 )
 
+# Security headers middleware
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses."""
+    # Prevent clickjacking attacks
+    response.headers['X-Frame-Options'] = 'DENY'
+
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+
+    # Enable XSS protection
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+
+    # Content Security Policy
+    # Based on actual frontend dependencies in templates/base.html
+    csp_policy = (
+        "default-src 'self'; "
+        "script-src 'self' https://cdn.tailwindcss.com https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'"
+    )
+    response.headers['Content-Security-Policy'] = csp_policy
+
+    # Enforce HTTPS in production
+    if not os.getenv("ENV", "").lower() == "development":
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
+    # Referrer policy - don't leak URLs to external sites
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+    # Permissions policy - disable unnecessary browser features
+    response.headers['Permissions-Policy'] = (
+        'geolocation=(), '
+        'microphone=(), '
+        'camera=(), '
+        'payment=(), '
+        'usb=()'
+    )
+
+    return response
+
+# Optional CORS configuration for development
+# Only enable if you're running a separate frontend dev server
+if os.getenv("ENABLE_CORS", "false").lower() == "true":
+    try:
+        from flask_cors import CORS
+        allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
+        CORS(app, origins=allowed_origins, supports_credentials=True)
+        print(f"✅ CORS enabled for origins: {allowed_origins}")
+    except ImportError:
+        print("⚠️ ENABLE_CORS=true but flask-cors not installed")
+        print("   Run: pip install flask-cors")
+
 # Add Jinja filter for timezone formatting
 @app.template_filter('format_user_time')
 def format_user_time_filter(dt_str: str, user_timezone: str = "America/New_York") -> str:
@@ -330,6 +386,62 @@ def get_user_timezone() -> str:
     return "America/New_York"
 
 
+def check_meeting_access(meeting_id: str):
+    """
+    Check if the current user has access to a meeting.
+
+    Verifies that the meeting exists and belongs to the current user.
+
+    Args:
+        meeting_id: The meeting ID to check
+
+    Returns:
+        Meeting: The meeting object if authorized
+        tuple: Flask error response (jsonify(...), status_code) if not authorized
+
+    Usage:
+        result = check_meeting_access(meeting_id)
+        if isinstance(result, tuple):
+            return result  # Return the error response tuple
+        # Use result as the Meeting object
+    """
+    meeting = meeting_service.get_meeting(meeting_id)
+
+    # Return 404 for both "not found" and "access denied" to prevent ID enumeration
+    if not meeting or meeting.user != g.user:
+        return jsonify({"error": "Meeting not found"}), 404
+
+    return meeting
+
+
+def check_scheduled_meeting_access(meeting_id: str):
+    """
+    Check if the current user has access to a scheduled meeting.
+
+    Verifies that the scheduled meeting exists and belongs to the current user.
+
+    Args:
+        meeting_id: The scheduled meeting ID to check
+
+    Returns:
+        object: The scheduled meeting object if authorized
+        tuple: Flask error response (jsonify(...), status_code) if not authorized
+
+    Usage:
+        result = check_scheduled_meeting_access(meeting_id)
+        if isinstance(result, tuple):
+            return result  # Return the error response tuple
+        # Use result as the scheduled meeting object
+    """
+    meeting = scheduled_meeting_service.get_scheduled_meeting(meeting_id)
+
+    # Return 404 for both "not found" and "access denied" to prevent ID enumeration
+    if not meeting or meeting.user != g.user:
+        return jsonify({"error": "Scheduled meeting not found"}), 404
+
+    return meeting
+
+
 @app.route('/', methods=['GET'])
 def index():
     """Landing page with sign-in."""
@@ -508,6 +620,7 @@ def setup_admin():
 # =============================================================================
 
 @app.route('/ui/meetings-list', methods=['GET'])
+@require_auth
 def ui_meetings_list():
     """HTMX partial: Get meeting list HTML."""
     meetings = meeting_service.list_meetings(user=g.user if g.user != 'anonymous' else None)
@@ -516,6 +629,7 @@ def ui_meetings_list():
 
 
 @app.route('/ui/meetings', methods=['POST'])
+@limiter.limit("10 per hour")  # Limit meeting creation to prevent abuse
 def ui_create_meeting():
     """HTMX: Create a meeting and return updated list."""
     # Check if bot joining feature is enabled
@@ -555,20 +669,28 @@ def ui_create_meeting():
 
 
 @app.route('/ui/meetings/<meeting_id>', methods=['GET'])
+@require_auth
 def ui_meeting_detail(meeting_id):
     """UI: Meeting detail page."""
-    meeting = meeting_service.get_meeting(meeting_id)
-
-    if not meeting:
+    result = check_meeting_access(meeting_id)
+    if isinstance(result, tuple):
+        # For UI endpoints, redirect to index on error instead of returning JSON
         return redirect(url_for('index'))
 
+    meeting = result
     user_timezone = get_user_timezone()
     return render_template('meeting_detail.html', meeting=meeting, user=g.user, user_timezone=user_timezone)
 
 
 @app.route('/ui/meetings/<meeting_id>', methods=['DELETE'])
+@require_auth
 def ui_delete_meeting(meeting_id):
     """HTMX: Remove bot from meeting and return updated list."""
+    result = check_meeting_access(meeting_id)
+    if isinstance(result, tuple):
+        # For HTMX endpoints, return error message HTML
+        return '<div class="error">Meeting not found or access denied</div>', 404
+
     _success = meeting_service.leave_meeting(meeting_id)
 
     # Return updated meeting list
@@ -706,15 +828,11 @@ def list_scheduled_meetings():
 @require_auth
 def get_scheduled_meeting(meeting_id):
     """Get a scheduled meeting by ID."""
-    meeting = scheduled_meeting_service.get_scheduled_meeting(meeting_id)
+    result = check_scheduled_meeting_access(meeting_id)
+    if isinstance(result, tuple):
+        return result  # Return error response
 
-    if not meeting:
-        return jsonify({"error": "Scheduled meeting not found"}), 404
-
-    # Check user owns this scheduled meeting
-    if meeting.user != g.user and g.user != 'anonymous':
-        return jsonify({"error": "Forbidden"}), 403
-
+    meeting = result
     return jsonify(meeting.to_dict())
 
 
@@ -722,14 +840,9 @@ def get_scheduled_meeting(meeting_id):
 @require_auth
 def delete_scheduled_meeting(meeting_id):
     """Cancel a scheduled meeting."""
-    meeting = scheduled_meeting_service.get_scheduled_meeting(meeting_id)
-
-    if not meeting:
-        return jsonify({"error": "Scheduled meeting not found"}), 404
-
-    # Check user owns this scheduled meeting
-    if meeting.user != g.user and g.user != 'anonymous':
-        return jsonify({"error": "Forbidden"}), 403
+    result = check_scheduled_meeting_access(meeting_id)
+    if isinstance(result, tuple):
+        return result  # Return error response
 
     success, error = scheduled_meeting_service.delete_scheduled_meeting(meeting_id)
 
@@ -923,18 +1036,22 @@ def list_meetings():
 @require_auth
 def get_meeting(meeting_id):
     """Get status of a specific meeting."""
-    meeting = meeting_service.get_meeting(meeting_id)
+    result = check_meeting_access(meeting_id)
+    if isinstance(result, tuple):
+        return result  # Return error response
 
-    if not meeting:
-        return jsonify({"error": "Meeting not found"}), 404
-
-    return jsonify(meeting.to_dict())
+    meeting = result
+    return jsonify(meeting)
 
 
 @app.route('/api/meetings/<meeting_id>', methods=['DELETE'])
 @require_auth
 def remove_meeting(meeting_id):
     """Remove bot from meeting."""
+    result = check_meeting_access(meeting_id)
+    if isinstance(result, tuple):
+        return result  # Return error response
+
     success = meeting_service.leave_meeting(meeting_id)
     if success:
         return jsonify({"status": "leaving"})
@@ -975,10 +1092,11 @@ def handle_webhook():
 @require_auth
 def get_meeting_outputs(meeting_id):
     """Get the output files for a completed meeting."""
-    meeting = meeting_service.get_meeting(meeting_id)
+    result = check_meeting_access(meeting_id)
+    if isinstance(result, tuple):
+        return result  # Return error response
 
-    if not meeting:
-        return jsonify({"error": "Meeting not found"}), 404
+    meeting = result
 
     if meeting.status != 'completed':
         return jsonify({
@@ -1005,14 +1123,9 @@ def download_output(meeting_id, filename):
     Fetches from GCS and serves directly through Flask.
     Requires authentication - verifies user owns the meeting.
     """
-    # Check if meeting exists
-    meeting = meeting_service.get_meeting(meeting_id)
-    if not meeting:
-        return jsonify({"error": "Meeting not found"}), 404
-
-    # Verify user owns this meeting (unless anonymous mode is enabled)
-    if g.user != 'anonymous' and meeting.user != g.user:
-        return jsonify({"error": "Forbidden - you don't have access to this meeting"}), 403
+    result = check_meeting_access(meeting_id)
+    if isinstance(result, tuple):
+        return result  # Return error response
 
     # Fetch file content from storage (GCS or local)
     content = storage.get_file(meeting_id, filename)
@@ -1182,6 +1295,7 @@ def process_recall_transcript_task(meeting_id: str):
 
 @app.route('/api/meetings/<meeting_id>/reprocess', methods=['POST'])
 @require_auth
+@limiter.limit("5 per hour")  # Reprocessing is expensive, limit strictly
 def reprocess_meeting(meeting_id: str):
     """
     Reprocess a failed or completed meeting.

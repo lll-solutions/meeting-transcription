@@ -91,10 +91,25 @@ echo ""
 # =============================================================================
 # Build secrets string
 # =============================================================================
-SECRETS_STRING="RECALL_API_KEY=RECALL_API_KEY:latest"
+SECRETS_STRING=""
+
+# Check and add RECALL_API_KEY if it exists
+if gcloud secrets describe RECALL_API_KEY --quiet 2>/dev/null; then
+    SECRETS_STRING="RECALL_API_KEY=RECALL_API_KEY:latest"
+
+    # Ensure permissions
+    gcloud secrets add-iam-policy-binding RECALL_API_KEY \
+        --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor" \
+        --quiet 2>/dev/null || true
+fi
 
 if gcloud secrets describe JWT_SECRET --quiet 2>/dev/null; then
-    SECRETS_STRING="${SECRETS_STRING},JWT_SECRET=JWT_SECRET:latest"
+    if [ -z "$SECRETS_STRING" ]; then
+        SECRETS_STRING="JWT_SECRET=JWT_SECRET:latest"
+    else
+        SECRETS_STRING="${SECRETS_STRING},JWT_SECRET=JWT_SECRET:latest"
+    fi
 
     # Ensure permissions
     gcloud secrets add-iam-policy-binding JWT_SECRET \
@@ -103,8 +118,26 @@ if gcloud secrets describe JWT_SECRET --quiet 2>/dev/null; then
         --quiet 2>/dev/null || true
 fi
 
+if gcloud secrets describe SETUP_API_KEY --quiet 2>/dev/null; then
+    if [ -z "$SECRETS_STRING" ]; then
+        SECRETS_STRING="SETUP_API_KEY=SETUP_API_KEY:latest"
+    else
+        SECRETS_STRING="${SECRETS_STRING},SETUP_API_KEY=SETUP_API_KEY:latest"
+    fi
+
+    # Ensure permissions
+    gcloud secrets add-iam-policy-binding SETUP_API_KEY \
+        --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+        --role="roles/secretmanager.secretAccessor" \
+        --quiet 2>/dev/null || true
+fi
+
 if gcloud secrets describe FIREBASE_API_KEY --quiet 2>/dev/null; then
-    SECRETS_STRING="${SECRETS_STRING},FIREBASE_API_KEY=FIREBASE_API_KEY:latest"
+    if [ -z "$SECRETS_STRING" ]; then
+        SECRETS_STRING="FIREBASE_API_KEY=FIREBASE_API_KEY:latest"
+    else
+        SECRETS_STRING="${SECRETS_STRING},FIREBASE_API_KEY=FIREBASE_API_KEY:latest"
+    fi
 
     # Ensure permissions
     gcloud secrets add-iam-policy-binding FIREBASE_API_KEY \
@@ -114,12 +147,20 @@ if gcloud secrets describe FIREBASE_API_KEY --quiet 2>/dev/null; then
 fi
 
 if gcloud secrets describe RECALL_WEBHOOK_SECRET --quiet 2>/dev/null; then
-    SECRETS_STRING="${SECRETS_STRING},RECALL_WEBHOOK_SECRET=RECALL_WEBHOOK_SECRET:latest"
+    if [ -z "$SECRETS_STRING" ]; then
+        SECRETS_STRING="RECALL_WEBHOOK_SECRET=RECALL_WEBHOOK_SECRET:latest"
+    else
+        SECRETS_STRING="${SECRETS_STRING},RECALL_WEBHOOK_SECRET=RECALL_WEBHOOK_SECRET:latest"
+    fi
 fi
 
 # Add Azure secrets if using Azure OpenAI
 if [ "$LLM_PROVIDER" = "azure_openai" ]; then
-    SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_API_KEY=AZURE_OPENAI_API_KEY:latest"
+    if [ -z "$SECRETS_STRING" ]; then
+        SECRETS_STRING="AZURE_OPENAI_API_KEY=AZURE_OPENAI_API_KEY:latest"
+    else
+        SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_API_KEY=AZURE_OPENAI_API_KEY:latest"
+    fi
     SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_ENDPOINT=AZURE_OPENAI_ENDPOINT:latest"
     SECRETS_STRING="${SECRETS_STRING},AZURE_OPENAI_DEPLOYMENT=AZURE_OPENAI_DEPLOYMENT:latest"
 fi
@@ -132,18 +173,26 @@ ENV_VARS="LLM_PROVIDER=${LLM_PROVIDER},GCP_REGION=us-central1,OUTPUT_BUCKET=${BU
 ENV_VARS="${ENV_VARS},AUTH_PROVIDER=db,GOOGLE_CLOUD_PROJECT=${PROJECT_ID}"
 ENV_VARS="${ENV_VARS},SERVICE_URL=${SERVICE_URL},WEBHOOK_URL=${SERVICE_URL}/webhook/recall,GCP_PROJECT_NUMBER=${PROJECT_NUMBER}"
 
+# Set FEATURES_BOT_JOINING based on whether RECALL_API_KEY exists
+if gcloud secrets describe RECALL_API_KEY --quiet 2>/dev/null; then
+    ENV_VARS="${ENV_VARS},FEATURES_BOT_JOINING=true"
+else
+    ENV_VARS="${ENV_VARS},FEATURES_BOT_JOINING=false"
+fi
+
 echo -e "${BLUE}Deploying...${NC}"
 echo ""
 
-gcloud run deploy meeting-transcription \
-    --source . \
-    --region us-central1 \
-    --allow-unauthenticated \
-    --set-secrets="${SECRETS_STRING}" \
-    --set-env-vars="${ENV_VARS}" \
-    --memory 1Gi \
-    --timeout 600 \
-    --quiet
+# Build deploy command with conditional secrets flag
+DEPLOY_CMD="gcloud run deploy meeting-transcription --source . --region us-central1 --allow-unauthenticated"
+
+if [ -n "$SECRETS_STRING" ]; then
+    DEPLOY_CMD="${DEPLOY_CMD} --set-secrets=\"${SECRETS_STRING}\""
+fi
+
+DEPLOY_CMD="${DEPLOY_CMD} --set-env-vars=\"${ENV_VARS}\" --memory 1Gi --timeout 600 --quiet"
+
+eval $DEPLOY_CMD
 
 echo ""
 echo -e "${GREEN}✓ Deployed successfully!${NC}"
