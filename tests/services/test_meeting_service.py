@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.models.meeting import Meeting
-from src.services.meeting_service import MeetingService
+from meeting_transcription.models.meeting import Meeting
+from meeting_transcription.services.meeting_service import MeetingService
 
 
 @pytest.fixture

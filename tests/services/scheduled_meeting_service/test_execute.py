@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.api.scheduled_meetings import ScheduledMeeting
-from src.services.scheduled_meeting_service import ScheduledMeetingService
+from meeting_transcription.api.scheduled_meetings import ScheduledMeeting
+from meeting_transcription.services.scheduled_meeting_service import ScheduledMeetingService
 
 
 @pytest.fixture

@@ -3,7 +3,7 @@ Tests for plugin registry.
 """
 
 import pytest
-from src.plugins import (
+from meeting_transcription.plugins import (
     PluginRegistry,
     register_plugin,
     get_plugin,

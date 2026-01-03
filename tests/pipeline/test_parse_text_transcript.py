@@ -9,7 +9,7 @@ Test coverage:
 """
 
 import pytest
-from src.pipeline.parse_text_transcript import (
+from meeting_transcription.pipeline.parse_text_transcript import (
     detect_text_transcript_format,
     parse_vtt_to_combined_format,
     parse_bracketed_to_combined_format,

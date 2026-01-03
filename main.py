@@ -22,24 +22,24 @@ from flask import (
 load_dotenv()
 
 # Import API and pipeline modules
-from src.api import recall
-from src.api.auth import (
+from meeting_transcription.api import recall
+from meeting_transcription.api.auth import (
     get_current_user,
     init_auth,
     require_auth,
     verify_cloud_tasks,
     verify_webhook,
 )
-from src.api.storage import MeetingStorage
-from src.api.timezone_utils import format_datetime_for_user, utc_now
-from src.services.meeting_service import MeetingService
-from src.services.scheduled_meeting_service import ScheduledMeetingService
-from src.services.transcript_service import TranscriptService
-from src.services.webhook_service import WebhookService
-from src.utils.url_validator import UrlValidator
+from meeting_transcription.api.storage import MeetingStorage
+from meeting_transcription.api.timezone_utils import format_datetime_for_user, utc_now
+from meeting_transcription.services.meeting_service import MeetingService
+from meeting_transcription.services.scheduled_meeting_service import ScheduledMeetingService
+from meeting_transcription.services.transcript_service import TranscriptService
+from meeting_transcription.services.webhook_service import WebhookService
+from meeting_transcription.utils.url_validator import UrlValidator
 
 # Import plugin system
-from src.plugins import get_plugin, discover_and_register_plugins, register_builtin_plugins
+from meeting_transcription.plugins import get_plugin, discover_and_register_plugins, register_builtin_plugins
 
 # Register built-in plugins (educational)
 register_builtin_plugins()
@@ -271,9 +271,9 @@ webhook_service = WebhookService(
 )
 
 # Import dependencies for ScheduledMeetingService
-from src.api.auth_db import get_auth_service
-from src.api.scheduled_meetings import get_scheduled_meeting_storage
-from src.api.timezone_utils import parse_user_datetime
+from meeting_transcription.api.auth_db import get_auth_service
+from meeting_transcription.api.scheduled_meetings import get_scheduled_meeting_storage
+from meeting_transcription.api.timezone_utils import parse_user_datetime
 
 
 # Create simple wrappers for ScheduledMeetingService dependencies

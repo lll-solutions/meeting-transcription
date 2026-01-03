@@ -7,7 +7,7 @@ import json
 import os
 import tempfile
 from unittest.mock import Mock, patch
-from src.plugins.educational_plugin import EducationalPlugin
+from meeting_transcription.plugins.educational_plugin import EducationalPlugin
 
 
 class TestEducationalPlugin:
