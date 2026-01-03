@@ -17,7 +17,7 @@ load_dotenv()
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from src.api.storage import MeetingStorage
+from meeting_transcription.api.storage import MeetingStorage
 from main import process_transcript
 
 
