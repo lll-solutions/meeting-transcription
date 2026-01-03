@@ -10,8 +10,8 @@ Handles business logic for scheduling bots to join meetings:
 from datetime import UTC, datetime
 from typing import Any
 
-from src.api.scheduled_meetings import ScheduledMeeting
-from src.utils.url_validator import UrlValidator
+from meeting_transcription.api.scheduled_meetings import ScheduledMeeting
+from meeting_transcription.utils.url_validator import UrlValidator
 
 
 class ScheduledMeetingService:

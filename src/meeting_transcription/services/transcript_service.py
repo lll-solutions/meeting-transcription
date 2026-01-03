@@ -12,10 +12,10 @@ import os
 import tempfile
 from datetime import UTC, datetime
 
-from src.api.recall import download_transcript
-from src.api.storage import MeetingStorage
-from src.pipeline import combine_transcript_words
-from src.plugins import TranscriptPlugin
+from meeting_transcription.api.recall import download_transcript
+from meeting_transcription.api.storage import MeetingStorage
+from meeting_transcription.pipeline import combine_transcript_words
+from meeting_transcription.plugins import TranscriptPlugin
 
 
 class TranscriptService:

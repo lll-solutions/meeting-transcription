@@ -9,10 +9,10 @@ Handles business logic for meeting bot operations:
 """
 
 
-from src.api.recall import create_bot, get_bot_status, leave_meeting
-from src.api.storage import MeetingStorage
-from src.models.meeting import Meeting
-from src.utils.url_validator import UrlValidator
+from meeting_transcription.api.recall import create_bot, get_bot_status, leave_meeting
+from meeting_transcription.api.storage import MeetingStorage
+from meeting_transcription.models.meeting import Meeting
+from meeting_transcription.utils.url_validator import UrlValidator
 
 
 class MeetingService:

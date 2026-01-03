@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from src.api.storage import MeetingStorage
+from meeting_transcription.api.storage import MeetingStorage
 
 
 class WebhookService:
