@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
-from src.services.transcript_service import TranscriptService
+from meeting_transcription.services.transcript_service import TranscriptService
 
 
 @pytest.fixture

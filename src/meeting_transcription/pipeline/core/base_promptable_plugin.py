@@ -12,7 +12,7 @@ from dataclasses import asdict, is_dataclass
 import json
 import os
 
-from src.utils.llm_client import LLMClient
+from meeting_transcription.utils.llm_client import LLMClient
 
 
 class BasePromptablePlugin(ABC):

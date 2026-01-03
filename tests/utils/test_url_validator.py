@@ -9,7 +9,7 @@ Test coverage:
 
 import pytest
 
-from src.utils.url_validator import UrlValidator
+from meeting_transcription.utils.url_validator import UrlValidator
 
 
 class TestValidateMeetingUrl:

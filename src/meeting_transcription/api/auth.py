@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Dict, Any
 from flask import request, g, jsonify
 
-from src.api import auth_db
+from meeting_transcription.api import auth_db
 
 # Try to import Firebase Admin
 try:

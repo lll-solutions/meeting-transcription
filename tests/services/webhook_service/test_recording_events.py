@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.services.webhook_service import WebhookService
+from meeting_transcription.services.webhook_service import WebhookService
 
 
 @pytest.fixture

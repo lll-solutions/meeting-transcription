@@ -14,7 +14,7 @@ import os
 import json
 from typing import Dict, Any
 
-from src.pipeline import (
+from meeting_transcription.pipeline import (
     create_educational_chunks,
     summarize_educational_content,
     create_study_guide,

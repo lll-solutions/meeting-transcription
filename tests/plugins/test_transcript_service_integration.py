@@ -7,8 +7,8 @@ import json
 import os
 import tempfile
 from unittest.mock import Mock, patch, MagicMock
-from src.services.transcript_service import TranscriptService
-from src.api.storage import MeetingStorage
+from meeting_transcription.services.transcript_service import TranscriptService
+from meeting_transcription.api.storage import MeetingStorage
 
 
 class MockPlugin:

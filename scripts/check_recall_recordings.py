@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
-from src.api.storage import MeetingStorage
-from src.api import recall
+from meeting_transcription.api.storage import MeetingStorage
+from meeting_transcription.api import recall
 
 storage = MeetingStorage(bucket_name=os.getenv("OUTPUT_BUCKET"))
 meetings = storage.list_meetings(limit=20)

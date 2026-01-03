@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "Meeting transcription service with AI-powered summarization"
 authors = ["Kurt Niemi <kurtn@lll-solutions.com>"]
 readme = "README.md"
-package-mode = false
+packages = [{include = "meeting_transcription", from = "src"}]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.14"
