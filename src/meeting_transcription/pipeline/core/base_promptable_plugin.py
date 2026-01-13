@@ -22,8 +22,8 @@ class BasePromptablePlugin(ABC):
         self,
         combined_transcript_path: str,
         output_dir: str,
-        llm_provider: str,
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
+        model: str | None = None
     ) -> Dict[str, str]:
         """
         Main pipeline implementation.
@@ -65,9 +65,9 @@ class BasePromptablePlugin(ABC):
         print("🎯 Building extraction prompt...")
         prompt = self.get_extraction_prompt(transcript_text, metadata)
 
-        # Call LLM (provider auto-detected from AI_MODEL env var)
+        # Call LLM (uses AI_MODEL env var if model not provided)
         print(f"🤖 Calling LLM...")
-        llm_client = LLMClient()
+        llm_client = LLMClient(model=model)
 
         response_schema = self.get_response_schema()
         if response_schema:
@@ -98,6 +98,9 @@ class BasePromptablePlugin(ABC):
         else:
             chunk_strategy = chunk_metadata.get('chunk_strategy', 'unknown')
 
+        # Extract provider from model for logging
+        provider = llm_client.model.split(":")[0] if ":" in llm_client.model else "unknown"
+
         summary_data = {
             'metadata': {
                 **metadata,
@@ -108,7 +111,7 @@ class BasePromptablePlugin(ABC):
             },
             'llm_response': llm_response,
             'processing_info': {
-                'provider': llm_provider,
+                'provider': provider,
                 'model': llm_client.model,
                 'chunks_processed': len(chunked_data['chunks'])
             }

@@ -63,11 +63,24 @@ class LLMClient:
             os.environ["GOOGLE_PROJECT_ID"] = google_project
             os.environ["GOOGLE_REGION"] = os.getenv("GOOGLE_REGION") or os.getenv("GCP_REGION", "global")
 
+            # Get credentials path (ADC or service account)
+            creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            if not creds_path:
+                # Fall back to ADC (from gcloud auth application-default login)
+                from pathlib import Path
+                adc_path = Path.home() / ".config" / "gcloud" / "application_default_credentials.json"
+                if adc_path.exists():
+                    creds_path = str(adc_path)
+
             # Build config for aisuite
             provider_configs["google"] = {
                 "project_id": google_project,
                 "region": os.environ["GOOGLE_REGION"],
             }
+
+            # Add credentials if we have them (skip in Cloud Run - uses default service account)
+            if creds_path:
+                provider_configs["google"]["application_credentials"] = creds_path
 
         # OpenAI (direct or Azure)
         openai_key = os.getenv("OPENAI_API_KEY")
