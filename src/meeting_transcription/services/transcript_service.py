@@ -7,15 +7,16 @@ Handles business logic for processing meeting transcripts:
 - Running the unified AI summarization pipeline
 """
 
+import asyncio
 import json
 import os
 import tempfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
-from meeting_transcription.api.recall import download_transcript
 from meeting_transcription.api.storage import MeetingStorage
 from meeting_transcription.pipeline import combine_transcript_words
 from meeting_transcription.plugins import TranscriptPlugin
+from meeting_transcription.providers import TranscriptProvider, ProviderType, get_provider
 
 
 class TranscriptService:
@@ -25,6 +26,7 @@ class TranscriptService:
         self,
         storage: MeetingStorage,
         plugin: TranscriptPlugin | None = None,
+        provider: TranscriptProvider | None = None,
         llm_provider: str | None = None
     ) -> None:
         """
@@ -33,11 +35,20 @@ class TranscriptService:
         Args:
             storage: Meeting storage instance for persistence
             plugin: Plugin for domain-specific processing (required for processing methods)
+            provider: Transcript provider instance (defaults to env-configured provider)
             llm_provider: LLM provider to use (defaults to 'vertex_ai')
         """
         self.storage = storage
         self.plugin = plugin
+        self._provider = provider
         self.llm_provider = llm_provider or "vertex_ai"
+
+    @property
+    def provider(self) -> TranscriptProvider:
+        """Get the transcript provider (lazy initialization)."""
+        if self._provider is None:
+            self._provider = get_provider()
+        return self._provider
 
     def process_recall_transcript(
         self, transcript_id: str, recording_id: str | None = None
@@ -62,13 +73,15 @@ class TranscriptService:
             self.storage.update_meeting(meeting_id, {"status": "processing"})
 
             with tempfile.TemporaryDirectory() as temp_dir:
-                # Step 1: Download transcript from Recall API
+                # Step 1: Download transcript from provider
                 print("📥 Step 1: Downloading transcript...")
                 transcript_file = os.path.join(temp_dir, "transcript_raw.json")
-                result = download_transcript(transcript_id, transcript_file)
+
+                # Use provider to download transcript
+                result = self._download_transcript(transcript_id, transcript_file)
 
                 if not result:
-                    raise RuntimeError("Failed to download transcript from Recall API")
+                    raise RuntimeError("Failed to download transcript from provider")
 
                 # Run unified pipeline (steps 2-7)
                 self._run_pipeline(
@@ -89,6 +102,36 @@ class TranscriptService:
                 meeting_id, {"status": "failed", "error": str(e)}
             )
             raise
+
+    def _download_transcript(self, transcript_id: str, output_file: str) -> str | None:
+        """
+        Download transcript using provider or legacy API.
+
+        Args:
+            transcript_id: Transcript ID
+            output_file: Path to save transcript
+
+        Returns:
+            str | None: Output file path if successful
+        """
+        # Try using provider first
+        from meeting_transcription.providers.recall_provider import RecallProvider
+
+        if isinstance(self.provider, RecallProvider):
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            result = loop.run_until_complete(
+                self.provider.download_transcript(transcript_id, output_file)
+            )
+            return result
+
+        # Fallback to legacy API
+        from meeting_transcription.api.recall import download_transcript
+        return download_transcript(transcript_id, output_file)
 
     def process_uploaded_transcript(
         self, meeting_id: str, transcript_data: list, title: str | None = None
@@ -246,7 +289,7 @@ class TranscriptService:
             {
                 "status": "completed",
                 "outputs": outputs,
-                "completed_at": datetime.now(UTC).isoformat(),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
             },
         )
 
@@ -290,9 +333,9 @@ class TranscriptService:
 
         # Generate default title if not provided
         if not title:
-            title = f'Uploaded Transcript {datetime.now(UTC).strftime("%Y-%m-%d %H:%M")}'
+            title = f'Uploaded Transcript {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")}'
 
-        # Generate unique meeting ID
+        # Generate unique meeting ID using manual provider
         meeting_id = f"upload-{uuid.uuid4().hex[:8]}"
 
         # Create meeting record with initial status, plugin, and metadata
@@ -300,10 +343,11 @@ class TranscriptService:
             meeting_id=meeting_id, user=user, meeting_url=None, bot_name=title
         )
 
-        # Update with plugin, metadata, and status
+        # Update with plugin, metadata, provider type, and status
         update_data = {
             "status": "queued",
-            "plugin": plugin or "educational"
+            "plugin": plugin or "educational",
+            "provider": ProviderType.MANUAL.value
         }
         if metadata:
             update_data["metadata"] = metadata

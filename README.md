@@ -92,6 +92,52 @@ Create custom plugins for your specific domain—legal case summaries, sales cal
 
 See [Plugin Architecture Guide](docs/PLUGIN_ARCHITECTURE.md) for details on creating custom plugins.
 
+## 📡 Transcript Providers
+
+The system supports multiple transcript providers through a pluggable architecture:
+
+| Provider | Value | Status | Description |
+|----------|-------|--------|-------------|
+| **Recall.ai** | `recall` | ✅ Active | Bot joins meeting to record/transcribe (default) |
+| **Google Meet** | `google_meet` | 🔜 Coming | Direct API integration with Google Meet |
+| **Zoom** | `zoom` | 🔜 Coming | Direct API integration with Zoom Cloud Recordings |
+| **Manual Upload** | `manual` | ✅ Active | Upload transcripts directly (JSON, VTT, text) |
+
+### Configuration
+
+Set the `TRANSCRIPT_PROVIDER` environment variable to switch providers:
+
+```bash
+# Use Recall.ai bot (default)
+TRANSCRIPT_PROVIDER=recall
+
+# Use manual upload only
+TRANSCRIPT_PROVIDER=manual
+```
+
+### Provider-specific Configuration
+
+**Recall.ai** (default):
+```bash
+RECALL_API_KEY=your-api-key
+RECALL_API_BASE_URL=https://us-west-2.recall.ai/api/v1  # optional
+```
+
+**Google Meet** (coming soon):
+```bash
+# OAuth2 credentials for Google API access
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+**Zoom** (coming soon):
+```bash
+# Server-to-Server OAuth credentials
+ZOOM_ACCOUNT_ID=your-account-id
+ZOOM_CLIENT_ID=your-client-id
+ZOOM_CLIENT_SECRET=your-client-secret
+```
+
 ### Local Development (for developers)
 
 ```bash

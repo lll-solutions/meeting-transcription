@@ -1,7 +1,7 @@
 """
 Webhook event handling service.
 
-Handles business logic for Recall.ai webhook events:
+Handles business logic for webhook events from transcript providers:
 - Bot lifecycle events (joining, ended)
 - Recording completion events
 - Transcript completion events
@@ -15,15 +15,17 @@ from collections.abc import Callable
 from typing import Any
 
 from meeting_transcription.api.storage import MeetingStorage
+from meeting_transcription.providers import TranscriptProvider, ProviderType, get_provider
 
 
 class WebhookService:
-    """Service for handling Recall.ai webhook events."""
+    """Service for handling webhook events from transcript providers."""
 
     def __init__(
         self,
         storage: MeetingStorage,
-        recall_client: Any,
+        recall_client: Any = None,
+        provider: TranscriptProvider | None = None,
         process_transcript_callback: Callable[[str, str | None], None] | None = None,
     ) -> None:
         """
@@ -31,19 +33,28 @@ class WebhookService:
 
         Args:
             storage: Meeting storage instance for persistence
-            recall_client: Recall API client module
+            recall_client: Legacy Recall API client module (for backward compatibility)
+            provider: Transcript provider instance (preferred)
             process_transcript_callback: Optional callback for sync transcript processing
         """
         self.storage = storage
         self.recall = recall_client
+        self._provider = provider
         self.process_transcript_callback = process_transcript_callback
+
+    @property
+    def provider(self) -> TranscriptProvider:
+        """Get the transcript provider (lazy initialization)."""
+        if self._provider is None:
+            self._provider = get_provider()
+        return self._provider
 
     def handle_event(self, event_data: dict, service_url: str) -> None:
         """
         Route webhook events to appropriate handlers.
 
         Args:
-            event_data: Webhook event payload from Recall.ai
+            event_data: Webhook event payload from provider
             service_url: Base URL of this service for Cloud Tasks
 
         Raises:
@@ -55,7 +66,52 @@ class WebhookService:
 
         print(f"\n📨 Received event: {event}")
 
-        # Route to appropriate handler
+        # Detect provider type from event format
+        provider_type = self._detect_provider_type(event_data)
+
+        # Route based on provider type
+        if provider_type == ProviderType.RECALL:
+            self._handle_recall_event(event, event_data, service_url)
+        else:
+            # Generic handling - delegate to provider
+            meeting_id = self.provider.handle_webhook(event_data)
+            if meeting_id:
+                self._handle_transcript_ready(meeting_id, service_url)
+
+    def _detect_provider_type(self, event_data: dict) -> ProviderType:
+        """
+        Detect which provider sent this webhook.
+
+        Args:
+            event_data: Webhook event payload
+
+        Returns:
+            ProviderType for the detected provider
+        """
+        # Recall.ai events have specific event names
+        event = event_data.get("event", "")
+        if event.startswith("bot.") or event.startswith("recording.") or event.startswith("transcript."):
+            return ProviderType.RECALL
+
+        # Check for provider hint in payload
+        if "provider" in event_data:
+            try:
+                return ProviderType(event_data["provider"])
+            except ValueError:
+                pass
+
+        # Default to configured provider
+        return self.provider.provider_type
+
+    def _handle_recall_event(self, event: str, event_data: dict, service_url: str) -> None:
+        """
+        Handle Recall.ai-specific webhook events.
+
+        Args:
+            event: Event type string
+            event_data: Full event payload
+            service_url: Service URL for Cloud Tasks
+        """
         if event == "bot.joining_call":
             self._handle_bot_joining(event_data)
         elif event in ["bot.done", "bot.call_ended"]:
@@ -172,6 +228,28 @@ class WebhookService:
             if self.process_transcript_callback:
                 self.process_transcript_callback(transcript_id, recording_id)
 
+    def _handle_transcript_ready(self, meeting_id: str, service_url: str) -> None:
+        """
+        Handle generic transcript ready event from any provider.
+
+        Args:
+            meeting_id: Meeting ID with ready transcript
+            service_url: Service URL for Cloud Tasks
+        """
+        print(f"✅ Transcript ready for meeting: {meeting_id}")
+
+        # Try to queue via Cloud Tasks
+        task_created = self._create_cloud_task(
+            meeting_id, meeting_id, None, service_url
+        )
+
+        if task_created:
+            self.storage.update_meeting(meeting_id, {"status": "queued"})
+        else:
+            print("⚠️ Falling back to synchronous processing")
+            if self.process_transcript_callback:
+                self.process_transcript_callback(meeting_id, None)
+
     def _handle_transcript_failed(self, event_data: dict) -> None:
         """
         Handle transcript.failed event.
@@ -186,7 +264,7 @@ class WebhookService:
         self, bot_id: str | None, recording_id: str | None
     ) -> None:
         """
-        Request async transcript from Recall API.
+        Request async transcript from provider.
 
         Args:
             bot_id: Bot/meeting ID to update
@@ -198,7 +276,26 @@ class WebhookService:
         print(f"📝 Requesting async transcript for recording {recording_id}")
         time.sleep(5)  # Wait for recording to finalize
 
-        transcript_result = self.recall.create_async_transcript(recording_id)
+        # Use provider if available and it's a RecallProvider
+        from meeting_transcription.providers.recall_provider import RecallProvider
+
+        if isinstance(self.provider, RecallProvider):
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            transcript_result = loop.run_until_complete(
+                self.provider.create_async_transcript(recording_id)
+            )
+        elif self.recall:
+            # Fallback to legacy client
+            transcript_result = self.recall.create_async_transcript(recording_id)
+        else:
+            print("⚠️ No provider available for transcript request")
+            return
 
         # Update meeting with transcript_id
         if bot_id and transcript_result:

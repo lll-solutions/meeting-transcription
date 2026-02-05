@@ -8,24 +8,38 @@ Handles business logic for meeting bot operations:
 - Removing bots from meetings
 """
 
+import asyncio
 
-from meeting_transcription.api.recall import create_bot, get_bot_status, leave_meeting
 from meeting_transcription.api.storage import MeetingStorage
 from meeting_transcription.models.meeting import Meeting
+from meeting_transcription.providers import TranscriptProvider, get_provider
 from meeting_transcription.utils.url_validator import UrlValidator
 
 
 class MeetingService:
     """Service for managing meeting bots and their lifecycle."""
 
-    def __init__(self, storage: MeetingStorage) -> None:
+    def __init__(
+        self,
+        storage: MeetingStorage,
+        provider: TranscriptProvider | None = None
+    ) -> None:
         """
         Initialize the meeting service.
 
         Args:
             storage: Meeting storage instance for persistence
+            provider: Transcript provider instance (defaults to env-configured provider)
         """
         self.storage = storage
+        self._provider = provider
+
+    @property
+    def provider(self) -> TranscriptProvider:
+        """Get the transcript provider (lazy initialization)."""
+        if self._provider is None:
+            self._provider = get_provider()
+        return self._provider
 
     def create_meeting(
         self,
@@ -61,14 +75,25 @@ class MeetingService:
         if not bot_name:
             bot_name = "Meeting Assistant Bot"
 
-        # Create bot via Recall API
-        bot_data = create_bot(meeting_url, webhook_url, bot_name)
+        # Create meeting via provider (async -> sync bridge)
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
-        if not bot_data:
-            raise RuntimeError("Failed to create bot - Recall API returned no data")
+        meeting_id = loop.run_until_complete(
+            self.provider.create_meeting(
+                meeting_url,
+                webhook_url=webhook_url,
+                bot_name=bot_name
+            )
+        )
+
+        if not meeting_id:
+            raise RuntimeError(f"Failed to create meeting - {self.provider.name} returned no data")
 
         # Store meeting in persistent storage
-        meeting_id = bot_data["id"]
         meeting_dict = self.storage.create_meeting(
             meeting_id=meeting_id,
             user=user,
@@ -76,6 +101,11 @@ class MeetingService:
             bot_name=bot_name,
             instructor_name=instructor_name,
         )
+
+        # Store provider type for later reference
+        self.storage.update_meeting(meeting_id, {
+            "provider": self.provider.provider_type.value
+        })
 
         return Meeting.from_dict(meeting_dict)
 
@@ -96,7 +126,7 @@ class MeetingService:
         """
         Get meeting details by ID.
 
-        Tries storage first, falls back to Recall API if not found.
+        Tries storage first, falls back to provider API if not found.
 
         Args:
             meeting_id: The meeting/bot ID
@@ -110,10 +140,22 @@ class MeetingService:
         if meeting_dict:
             return Meeting.from_dict(meeting_dict)
 
-        # Fallback to Recall API
-        bot_status = get_bot_status(meeting_id)
-        if bot_status:
-            return Meeting.from_dict(bot_status)
+        # Fallback to provider API for status
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        try:
+            status = loop.run_until_complete(self.provider.get_status(meeting_id))
+            if status and status != "error":
+                return Meeting.from_dict({
+                    "id": meeting_id,
+                    "status": status
+                })
+        except Exception:
+            pass
 
         return None
 
@@ -127,13 +169,32 @@ class MeetingService:
         Returns:
             True if successful, False otherwise
         """
-        success = leave_meeting(meeting_id)
+        # Leave meeting via provider
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        success = loop.run_until_complete(self.provider.leave_meeting(meeting_id))
 
         if success:
             # Update status in storage
             self.storage.update_meeting(meeting_id, {"status": "leaving"})
 
         return success
+
+    def leave_meeting(self, meeting_id: str) -> bool:
+        """
+        Alias for delete_meeting for backward compatibility.
+
+        Args:
+            meeting_id: The meeting/bot ID to remove
+
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.delete_meeting(meeting_id)
 
     def join_meeting_for_scheduler(
         self,

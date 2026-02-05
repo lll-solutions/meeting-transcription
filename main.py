@@ -41,12 +41,20 @@ from meeting_transcription.utils.url_validator import UrlValidator
 # Import plugin system
 from meeting_transcription.plugins import get_plugin, discover_and_register_plugins, register_builtin_plugins
 
+# Import provider system
+from meeting_transcription.providers import get_provider, list_providers
+
 # Register built-in plugins (educational)
 register_builtin_plugins()
 
 # Auto-discover and register plugins from plugins/ directory
 # This allows plugins to be installed by simply copying files into plugins/
 discover_and_register_plugins()
+
+# Providers are auto-registered on import
+# Log active provider configuration
+_active_provider = os.getenv("TRANSCRIPT_PROVIDER", "recall")
+print(f"📡 Transcript Provider: {_active_provider}")
 
 app = Flask(__name__, static_folder='static')
 
@@ -187,8 +195,13 @@ FIREBASE_CONFIG = {
 # Initialize storage (GCS if bucket configured, else local)
 storage = MeetingStorage(bucket_name=OUTPUT_BUCKET, local_dir=OUTPUT_DIR)
 
-# Initialize services
-meeting_service = MeetingService(storage=storage)
+# Initialize transcript provider (uses TRANSCRIPT_PROVIDER env var, defaults to "recall")
+# Provider is initialized lazily, but we can get it here to verify configuration
+transcript_provider = get_provider()
+print(f"✅ Using transcript provider: {transcript_provider.name}")
+
+# Initialize services with provider
+meeting_service = MeetingService(storage=storage, provider=transcript_provider)
 
 # Create a default transcript service for utility methods (queuing, etc.)
 # Plugin is optional - only needed for processing methods
@@ -266,7 +279,8 @@ def process_transcript_callback(transcript_id: str, recording_id: str | None = N
 
 webhook_service = WebhookService(
     storage=storage,
-    recall_client=recall,
+    recall_client=recall,  # Legacy client for backward compatibility
+    provider=transcript_provider,
     process_transcript_callback=process_transcript_callback
 )
 
@@ -877,6 +891,51 @@ def execute_scheduled_meetings():
     result = scheduled_meeting_service.execute_pending_meetings()
 
     return jsonify(result)
+
+
+# =============================================================================
+# PROVIDER ROUTES
+# =============================================================================
+
+@app.route('/api/providers', methods=['GET'])
+def list_available_providers():
+    """
+    List all registered transcript providers.
+
+    Returns:
+        200: List of available providers
+
+    Example response:
+    [
+        {
+            "type": "recall",
+            "name": "Recall.ai",
+            "class": "RecallProvider"
+        },
+        {
+            "type": "google_meet",
+            "name": "Google Meet",
+            "class": "GoogleMeetProvider"
+        }
+    ]
+    """
+    providers = list_providers()
+    return jsonify(providers)
+
+
+@app.route('/api/providers/current', methods=['GET'])
+def get_current_provider():
+    """
+    Get the currently active transcript provider.
+
+    Returns:
+        200: Current provider info
+    """
+    provider = get_provider()
+    return jsonify({
+        "type": provider.provider_type.value,
+        "name": provider.name
+    })
 
 
 # =============================================================================
