@@ -71,9 +71,6 @@ class GoogleMeetProvider(TranscriptProvider):
         Returns:
             dict: Transcript data in internal format
         """
-        from meeting_transcription.google_meet.meet_client import MeetApiClient
-        from meeting_transcription.google_meet.transcript_parser import parse_meet_transcript
-
         # Meeting ID format: gmeet-{uuid}
         # We need to look up the transcript_name from the stored meeting data
         # This is a fallback path — normally MeetSessionHandler handles this

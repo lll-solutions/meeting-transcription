@@ -10,7 +10,7 @@ Handles:
 
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -101,7 +101,7 @@ class GoogleOAuthFlow:
                 "scope": token_data.get("scope", ""),
                 "google_email": profile.get("email", ""),
                 "google_name": profile.get("name", ""),
-                "connected_at": datetime.now(timezone.utc).isoformat(),
+                "connected_at": datetime.now(UTC).isoformat(),
             },
         )
 
@@ -181,7 +181,7 @@ class GoogleOAuthFlow:
                 **tokens,
                 "access_token": new_access_token,
                 "expires_in": data.get("expires_in", 3600),
-                "refreshed_at": datetime.now(timezone.utc).isoformat(),
+                "refreshed_at": datetime.now(UTC).isoformat(),
             },
         )
 
@@ -272,7 +272,7 @@ def _store_oauth_state(state: str, user_id: str) -> None:
         db.collection("google_oauth_states").document(state).set(
             {
                 "user_id": user_id,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
             }
         )
     else:

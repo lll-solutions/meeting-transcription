@@ -12,7 +12,7 @@ Provides:
 
 import os
 
-from flask import Blueprint, g, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, g, jsonify, redirect, render_template, request
 
 from .config import get_google_oauth_config
 from .oauth import GoogleOAuthFlow, delete_google_tokens, get_google_tokens, is_google_connected
@@ -59,7 +59,7 @@ def google_callback():
 
     flow = GoogleOAuthFlow()
     try:
-        profile = flow.handle_callback(code, state)
+        flow.handle_callback(code, state)
 
         # Auto-create Workspace Events subscription
         user_id = getattr(g, "user", None)

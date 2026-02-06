@@ -8,7 +8,7 @@ Uses the Workspace Events API v1:
 https://developers.google.com/workspace/events
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -205,7 +205,7 @@ class WorkspaceEventsManager:
         if expire_time:
             try:
                 expires = datetime.fromisoformat(expire_time.replace("Z", "+00:00"))
-                if expires < datetime.now(timezone.utc):
+                if expires < datetime.now(UTC):
                     return False
             except (ValueError, TypeError):
                 pass
@@ -232,7 +232,7 @@ def _store_subscription(user_id: str, subscription: dict[str, Any]) -> None:
             db.collection("google_meet_subscriptions").document(user_id).set(
                 {
                     **subscription,
-                    "stored_at": datetime.now(timezone.utc).isoformat(),
+                    "stored_at": datetime.now(UTC).isoformat(),
                 },
                 merge=True,
             )

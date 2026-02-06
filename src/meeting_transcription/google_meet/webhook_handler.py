@@ -7,7 +7,8 @@ becomes available, validates them, and triggers transcript fetching.
 
 import base64
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .config import get_google_oauth_config
 
@@ -68,7 +69,8 @@ class MeetWebhookHandler:
         # Validate subscription matches our expected subscription
         subscription = request_data.get("subscription", "")
         if (
-            self.config.pubsub_subscription
+            subscription
+            and self.config.pubsub_subscription
             and self.config.pubsub_subscription not in subscription
         ):
             raise ValueError(
@@ -76,7 +78,7 @@ class MeetWebhookHandler:
             )
 
         message = request_data.get("message")
-        if not message:
+        if message is None:
             raise ValueError("Missing 'message' in push data")
 
         # Decode the base64-encoded data
@@ -88,7 +90,7 @@ class MeetWebhookHandler:
             decoded = base64.b64decode(raw_data)
             event_data = json.loads(decoded)
         except (base64.binascii.Error, json.JSONDecodeError) as e:
-            raise ValueError(f"Failed to decode message data: {e}")
+            raise ValueError(f"Failed to decode message data: {e}") from e
 
         message_id = message.get("messageId", "unknown")
         event_type = event_data.get("eventType", "")

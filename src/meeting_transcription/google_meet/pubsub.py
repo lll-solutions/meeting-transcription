@@ -10,8 +10,8 @@ import os
 from .config import get_google_oauth_config
 
 try:
-    from google.cloud import pubsub_v1
     from google.api_core.exceptions import AlreadyExists, NotFound
+    from google.cloud import pubsub_v1
 
     HAS_PUBSUB = True
 except ImportError:

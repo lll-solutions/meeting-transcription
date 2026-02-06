@@ -7,7 +7,7 @@ Orchestrates: event received -> fetch transcript -> parse -> create meeting -> q
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .meet_client import MeetApiClient
@@ -153,7 +153,7 @@ class MeetSessionHandler:
             except (ValueError, TypeError):
                 pass
 
-        return f"Google Meet {conference_record_id[:8] if conference_record_id else datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}"
+        return f"Google Meet {conference_record_id[:8] if conference_record_id else datetime.now(UTC).strftime('%Y-%m-%d %H:%M')}"
 
     def _store_and_queue(
         self, meeting_id: str, segments: list[dict], title: str

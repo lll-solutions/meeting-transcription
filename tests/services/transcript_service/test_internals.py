@@ -7,11 +7,9 @@ Test coverage:
 - File upload handling
 """
 
-import json
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 from meeting_transcription.services.transcript_service import TranscriptService
 
 

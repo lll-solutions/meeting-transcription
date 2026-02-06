@@ -10,7 +10,6 @@ Test coverage:
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from meeting_transcription.services.webhook_service import WebhookService
 
 
@@ -27,9 +26,18 @@ def mock_recall() -> MagicMock:
 
 
 @pytest.fixture
-def service(mock_storage: MagicMock, mock_recall: MagicMock) -> WebhookService:
+def mock_provider() -> MagicMock:
+    """Mock TranscriptProvider that is NOT a RecallProvider."""
+    provider = MagicMock()
+    provider.provider_type = MagicMock()
+    provider.provider_type.value = "test"
+    return provider
+
+
+@pytest.fixture
+def service(mock_storage: MagicMock, mock_recall: MagicMock, mock_provider: MagicMock) -> WebhookService:
     """WebhookService instance with mocked dependencies."""
-    return WebhookService(storage=mock_storage, recall_client=mock_recall)
+    return WebhookService(storage=mock_storage, recall_client=mock_recall, provider=mock_provider)
 
 
 class TestFindMeetingByTranscript:

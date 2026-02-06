@@ -10,7 +10,6 @@ Test coverage:
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from meeting_transcription.services.webhook_service import WebhookService
 
 
