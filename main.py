@@ -44,6 +44,9 @@ from meeting_transcription.plugins import get_plugin, discover_and_register_plug
 # Import provider system
 from meeting_transcription.providers import get_provider, list_providers
 
+# Import Google Meet routes
+from meeting_transcription.google_meet.routes import google_meet_bp
+
 # Register built-in plugins (educational)
 register_builtin_plugins()
 
@@ -60,6 +63,9 @@ app = Flask(__name__, static_folder='static')
 
 # Configure for large file uploads (50MB limit)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+
+# Register Google Meet blueprint
+app.register_blueprint(google_meet_bp)
 
 # Initialize authentication
 init_auth(app)
