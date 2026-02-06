@@ -229,3 +229,36 @@ def google_meet_status():
         result["subscribed"] = manager.is_subscribed(user_id)
 
     return jsonify(result)
+
+
+@google_meet_bp.route("/ui/google-meet/transcripts")
+def google_meet_transcripts_partial():
+    """HTMX partial: Google Meet transcript status panel."""
+    user_id = getattr(g, "user", None)
+    if not user_id or user_id == "anonymous":
+        return ""
+
+    from meeting_transcription.api.storage import MeetingStorage
+
+    bucket_name = os.getenv("OUTPUT_BUCKET", "")
+    storage = MeetingStorage(bucket_name=bucket_name)
+
+    # Get all meetings from Google Meet provider
+    all_meetings = storage.list_meetings(user=user_id)
+    google_meet_meetings = [
+        m for m in all_meetings if m.get("provider") == "google_meet"
+    ]
+
+    # Sort: pending/processing first, then by creation date
+    status_order = {"queued": 0, "processing": 1, "failed": 2, "completed": 3}
+    google_meet_meetings.sort(
+        key=lambda m: (status_order.get(m.get("status", ""), 99), m.get("created_at", ""))
+    )
+
+    user_timezone = "America/New_York"
+
+    return render_template(
+        "partials/google_meet_status.html",
+        google_meet_meetings=google_meet_meetings,
+        user_timezone=user_timezone,
+    )
