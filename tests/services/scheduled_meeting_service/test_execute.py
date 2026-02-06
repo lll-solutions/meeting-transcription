@@ -12,7 +12,6 @@ from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest
-
 from meeting_transcription.api.scheduled_meetings import ScheduledMeeting
 from meeting_transcription.services.scheduled_meeting_service import ScheduledMeetingService
 

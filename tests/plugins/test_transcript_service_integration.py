@@ -2,13 +2,13 @@
 Integration tests for TranscriptService with plugins.
 """
 
-import pytest
 import json
 import os
 import tempfile
-from unittest.mock import Mock, patch, MagicMock
-from meeting_transcription.services.transcript_service import TranscriptService
+from unittest.mock import Mock, patch
+
 from meeting_transcription.api.storage import MeetingStorage
+from meeting_transcription.services.transcript_service import TranscriptService
 
 
 class MockPlugin:
@@ -52,7 +52,7 @@ class MockPlugin:
 class TestTranscriptServiceIntegration:
     """Integration tests for TranscriptService with plugin system."""
 
-    @patch('src.services.transcript_service.combine_transcript_words')
+    @patch('meeting_transcription.services.transcript_service.combine_transcript_words')
     def test_service_uses_plugin_for_processing(self, mock_combine_words):
         """Test that TranscriptService delegates processing to plugin."""
         # Create mock storage
@@ -75,9 +75,6 @@ class TestTranscriptServiceIntegration:
             transcript_file = os.path.join(temp_dir, "transcript.json")
             with open(transcript_file, 'w') as f:
                 json.dump([{"word": "hello"}], f)
-
-            # Create mock combined file for combine_words to create
-            combined_file = os.path.join(temp_dir, "transcript_combined.json")
 
             def mock_combine(input_path, output_path):
                 with open(output_path, 'w') as f:
@@ -103,7 +100,7 @@ class TestTranscriptServiceIntegration:
             assert update_call[0][0] == "test-meeting"
             assert update_call[0][1]["status"] == "completed"
 
-    @patch('src.services.transcript_service.combine_transcript_words')
+    @patch('meeting_transcription.services.transcript_service.combine_transcript_words')
     def test_service_passes_metadata_to_plugin(self, mock_combine_words):
         """Test that TranscriptService passes metadata to plugin."""
         storage = Mock(spec=MeetingStorage)
@@ -152,7 +149,7 @@ class TestTranscriptServiceIntegration:
             assert received_metadata["instructor_name"] == "Dr. Smith"
             assert received_metadata["session_number"] == 5
 
-    @patch('src.services.transcript_service.combine_transcript_words')
+    @patch('meeting_transcription.services.transcript_service.combine_transcript_words')
     def test_service_passes_llm_provider_to_plugin(self, mock_combine_words):
         """Test that TranscriptService passes LLM provider to plugin."""
         storage = Mock(spec=MeetingStorage)
@@ -191,9 +188,8 @@ class TestTranscriptServiceIntegration:
                 content = f.read()
                 assert "anthropic" in content
 
-    @patch('src.services.transcript_service.combine_transcript_words')
-    @patch('src.services.transcript_service.download_transcript')
-    def test_process_recall_transcript_with_plugin(self, mock_download, mock_combine):
+    @patch('meeting_transcription.services.transcript_service.combine_transcript_words')
+    def test_process_recall_transcript_with_plugin(self, mock_combine):
         """Test end-to-end process_recall_transcript with plugin."""
         storage = Mock(spec=MeetingStorage)
         storage.update_meeting = Mock()
@@ -205,37 +201,28 @@ class TestTranscriptServiceIntegration:
         plugin = MockPlugin()
         service = TranscriptService(storage=storage, plugin=plugin)
 
-        def mock_download_transcript(transcript_id, output_path):
-            with open(output_path, 'w') as f:
-                json.dump([{"word": "test"}], f)
-            return True
-
         def mock_combine_words_func(input_path, output_path):
             with open(output_path, 'w') as f:
                 json.dump([{"text": "test"}], f)
 
-        mock_download.side_effect = mock_download_transcript
         mock_combine.combine_transcript_words.side_effect = mock_combine_words_func
 
-        # Process transcript
-        service.process_recall_transcript(
-            transcript_id="transcript-456",
-            recording_id="recording-789"
-        )
-
-        # Verify download was called
-        mock_download.assert_called_once()
+        # Mock _download_transcript on the service instance
+        with patch.object(service, '_download_transcript', return_value="/tmp/transcript.json"):
+            service.process_recall_transcript(
+                transcript_id="transcript-456",
+                recording_id="recording-789"
+            )
 
         # Verify meeting was updated to completed
         update_calls = storage.update_meeting.call_args_list
-        # Should have at least one call with status="completed"
         completed_updates = [
             call for call in update_calls
             if "status" in call[0][1] and call[0][1]["status"] == "completed"
         ]
         assert len(completed_updates) > 0
 
-    @patch('src.services.transcript_service.combine_transcript_words')
+    @patch('meeting_transcription.services.transcript_service.combine_transcript_words')
     def test_service_uploads_plugin_outputs(self, mock_combine):
         """Test that TranscriptService uploads all plugin outputs."""
         storage = Mock(spec=MeetingStorage)

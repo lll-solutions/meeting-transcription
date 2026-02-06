@@ -218,6 +218,8 @@ class AuthConfig:
             "/health",
             "/api/config",
             "/webhook/recall",
+            "/webhook/google-meet",  # Pub/Sub push endpoint
+            "/oauth/google/callback",  # OAuth callback
             "/api/auth/login",  # New login endpoint
             "/api/auth/setup",  # New setup endpoint
             "/api/scheduled-meetings/execute"  # Cloud Scheduler endpoint

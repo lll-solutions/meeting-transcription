@@ -1,0 +1,72 @@
+<!-- Google Meet Transcript Status Panel -->
+{% if google_meet_meetings %}
+<div class="glass-card rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-green-400 flex items-center justify-center">
+                <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-white">Google Meet Transcripts</h3>
+        </div>
+        <span class="text-sm text-gray-400">{{ google_meet_meetings|length }} session{{ 's' if google_meet_meetings|length != 1 }}</span>
+    </div>
+
+    <div class="space-y-3">
+        {% for meeting in google_meet_meetings %}
+        <div class="bg-midnight-900/50 rounded-xl p-4 flex items-center justify-between hover:bg-midnight-900/70 transition-colors">
+            <div class="flex items-center space-x-3 min-w-0">
+                <!-- Status indicator -->
+                {% if meeting.status == 'completed' %}
+                <span class="w-2.5 h-2.5 rounded-full bg-accent-teal flex-shrink-0"></span>
+                {% elif meeting.status == 'processing' %}
+                <span class="w-2.5 h-2.5 rounded-full bg-accent-gold animate-pulse-soft flex-shrink-0"></span>
+                {% elif meeting.status == 'queued' %}
+                <span class="w-2.5 h-2.5 rounded-full bg-accent-violet animate-pulse-soft flex-shrink-0"></span>
+                {% elif meeting.status == 'failed' %}
+                <span class="w-2.5 h-2.5 rounded-full bg-accent-coral flex-shrink-0"></span>
+                {% else %}
+                <span class="w-2.5 h-2.5 rounded-full bg-gray-500 flex-shrink-0"></span>
+                {% endif %}
+
+                <div class="min-w-0">
+                    <p class="text-sm font-medium text-white truncate">
+                        {{ meeting.bot_name or meeting.title or 'Google Meet Session' }}
+                    </p>
+                    <p class="text-xs text-gray-400">
+                        {% if meeting.status == 'completed' %}
+                        Completed {{ meeting.completed_at|format_user_time(user_timezone) if meeting.completed_at else '' }}
+                        {% elif meeting.status == 'processing' %}
+                        Processing transcript...
+                        {% elif meeting.status == 'queued' %}
+                        Waiting to process...
+                        {% elif meeting.status == 'failed' %}
+                        Failed: {{ meeting.error or 'Unknown error' }}
+                        {% else %}
+                        {{ meeting.status }}
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2 flex-shrink-0">
+                {% if meeting.status == 'completed' %}
+                <a href="/ui/meetings/{{ meeting.id }}"
+                    class="px-3 py-1.5 rounded-lg bg-accent-teal/10 text-accent-teal text-xs font-medium hover:bg-accent-teal/20 transition-colors">
+                    View
+                </a>
+                {% elif meeting.status == 'failed' %}
+                <form method="POST" action="/api/meetings/{{ meeting.id }}/reprocess" class="inline">
+                    <button type="submit"
+                        class="px-3 py-1.5 rounded-lg bg-accent-gold/10 text-accent-gold text-xs font-medium hover:bg-accent-gold/20 transition-colors">
+                        Retry
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

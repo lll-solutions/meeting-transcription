@@ -155,6 +155,9 @@ gcloud services enable \
     artifactregistry.googleapis.com \
     cloudresourcemanager.googleapis.com \
     serviceusage.googleapis.com \
+    meet.googleapis.com \
+    pubsub.googleapis.com \
+    workspaceevents.googleapis.com \
     --quiet
 
 echo -e "${GREEN}✓ APIs enabled${NC}"
@@ -634,6 +637,41 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
     --quiet
 
 echo -e "${GREEN}✓ Cloud Tasks configured${NC}"
+echo ""
+
+# =============================================================================
+# Setup Pub/Sub for Google Meet transcript events
+# =============================================================================
+echo -e "${BLUE}Setting up Pub/Sub for Google Meet transcript events...${NC}"
+echo ""
+
+PUBSUB_TOPIC="meet-transcript-events"
+PUBSUB_SUBSCRIPTION="meet-transcript-push"
+
+# Create topic (idempotent)
+if gcloud pubsub topics describe "$PUBSUB_TOPIC" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Pub/Sub topic already exists${NC}"
+else
+    echo "Creating Pub/Sub topic..."
+    gcloud pubsub topics create "$PUBSUB_TOPIC" --quiet
+    echo -e "${GREEN}✓ Pub/Sub topic created${NC}"
+fi
+
+# Create push subscription pointing to the service webhook
+PUSH_ENDPOINT="${SERVICE_URL}/webhook/google-meet"
+if gcloud pubsub subscriptions describe "$PUBSUB_SUBSCRIPTION" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓ Pub/Sub subscription already exists${NC}"
+else
+    echo "Creating Pub/Sub push subscription..."
+    gcloud pubsub subscriptions create "$PUBSUB_SUBSCRIPTION" \
+        --topic="$PUBSUB_TOPIC" \
+        --push-endpoint="$PUSH_ENDPOINT" \
+        --ack-deadline=60 \
+        --quiet
+    echo -e "${GREEN}✓ Pub/Sub push subscription created${NC}"
+fi
+
+echo -e "${GREEN}✓ Pub/Sub configured for Google Meet transcripts${NC}"
 echo ""
 
 # =============================================================================

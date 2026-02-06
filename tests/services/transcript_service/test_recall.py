@@ -7,11 +7,9 @@ Test coverage:
 - Integration: Storage and pipeline module interaction
 """
 
-import json
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from meeting_transcription.services.transcript_service import TranscriptService
 
 
@@ -61,11 +59,9 @@ class TestProcessRecallTranscript:
     """Tests for process_recall_transcript method."""
 
     @patch("os.path.exists")
-    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
-    @patch("src.services.transcript_service.download_transcript")
+    @patch("meeting_transcription.pipeline.combine_transcript_words.combine_transcript_words")
     def test_process_recall_transcript_success(
         self,
-        mock_download: MagicMock,
         mock_combine: MagicMock,
         mock_exists: MagicMock,
         service: TranscriptService,
@@ -74,16 +70,15 @@ class TestProcessRecallTranscript:
         sample_meeting_dict: dict,
     ) -> None:
         """Successfully process a Recall API transcript."""
-        mock_download.return_value = True
         mock_exists.return_value = True
         mock_storage.list_meetings.return_value = [sample_meeting_dict]
         mock_storage.save_file_from_path.side_effect = lambda mid, fname, fpath: (
             f"gs://bucket/{mid}/{fname}"
         )
 
-        service.process_recall_transcript("transcript-456", "recording-789")
+        with patch.object(service, "_download_transcript", return_value="/tmp/transcript.json"):
+            service.process_recall_transcript("transcript-456", "recording-789")
 
-        mock_download.assert_called_once()
         mock_combine.assert_called_once()
         mock_plugin.process_transcript.assert_called_once()
 
@@ -98,20 +93,18 @@ class TestProcessRecallTranscript:
         assert "outputs" in final_call[0][1]
         assert "completed_at" in final_call[0][1]
 
-    @patch("src.services.transcript_service.download_transcript")
     def test_process_recall_transcript_download_failure(
         self,
-        mock_download: MagicMock,
         service: TranscriptService,
         mock_storage: MagicMock,
         sample_meeting_dict: dict,
     ) -> None:
         """Handle download failure from Recall API."""
-        mock_download.return_value = False
         mock_storage.list_meetings.return_value = [sample_meeting_dict]
 
-        with pytest.raises(RuntimeError, match="Failed to download transcript"):
-            service.process_recall_transcript("transcript-456")
+        with patch.object(service, "_download_transcript", return_value=None):
+            with pytest.raises(RuntimeError, match="Failed to download transcript"):
+                service.process_recall_transcript("transcript-456")
 
         error_calls = [
             c for c in mock_storage.update_meeting.call_args_list if "error" in c[0][1]
@@ -121,23 +114,21 @@ class TestProcessRecallTranscript:
         assert error_calls[0][0][1]["status"] == "failed"
         assert "error" in error_calls[0][0][1]
 
-    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
-    @patch("src.services.transcript_service.download_transcript")
+    @patch("meeting_transcription.pipeline.combine_transcript_words.combine_transcript_words")
     def test_process_recall_transcript_pipeline_failure(
         self,
-        mock_download: MagicMock,
         mock_combine: MagicMock,
         service: TranscriptService,
         mock_storage: MagicMock,
         sample_meeting_dict: dict,
     ) -> None:
         """Handle pipeline processing failure."""
-        mock_download.return_value = True
         mock_combine.side_effect = Exception("Pipeline error")
         mock_storage.list_meetings.return_value = [sample_meeting_dict]
 
-        with pytest.raises(Exception, match="Pipeline error"):
-            service.process_recall_transcript("transcript-456")
+        with patch.object(service, "_download_transcript", return_value="/tmp/transcript.json"):
+            with pytest.raises(Exception, match="Pipeline error"):
+                service.process_recall_transcript("transcript-456")
 
         error_calls = [
             c for c in mock_storage.update_meeting.call_args_list if "error" in c[0][1]
@@ -146,11 +137,9 @@ class TestProcessRecallTranscript:
         assert error_calls[0][0][1]["status"] == "failed"
 
     @patch("os.path.exists")
-    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
-    @patch("src.services.transcript_service.download_transcript")
+    @patch("meeting_transcription.pipeline.combine_transcript_words.combine_transcript_words")
     def test_process_recall_transcript_with_metadata_patching(
         self,
-        mock_download: MagicMock,
         mock_combine: MagicMock,
         mock_exists: MagicMock,
         service: TranscriptService,
@@ -159,12 +148,12 @@ class TestProcessRecallTranscript:
         sample_meeting_dict: dict,
     ) -> None:
         """Successfully pass meeting metadata to plugin."""
-        mock_download.return_value = True
         mock_exists.return_value = True
         mock_storage.list_meetings.return_value = [sample_meeting_dict]
         mock_storage.save_file_from_path.return_value = "gs://bucket/file"
 
-        service.process_recall_transcript("transcript-456")
+        with patch.object(service, "_download_transcript", return_value="/tmp/transcript.json"):
+            service.process_recall_transcript("transcript-456")
 
         # Verify plugin was called with metadata
         mock_plugin.process_transcript.assert_called_once()
@@ -173,11 +162,9 @@ class TestProcessRecallTranscript:
         assert call_kwargs["metadata"] == sample_meeting_dict
 
     @patch("os.path.exists")
-    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
-    @patch("src.services.transcript_service.download_transcript")
+    @patch("meeting_transcription.pipeline.combine_transcript_words.combine_transcript_words")
     def test_process_recall_transcript_uses_recording_id_when_meeting_not_found(
         self,
-        mock_download: MagicMock,
         mock_combine: MagicMock,
         mock_exists: MagicMock,
         service: TranscriptService,
@@ -185,12 +172,12 @@ class TestProcessRecallTranscript:
         mock_plugin: MagicMock,
     ) -> None:
         """Process transcript using recording_id as fallback when meeting not found."""
-        mock_download.return_value = True
         mock_exists.return_value = True
         mock_storage.list_meetings.return_value = []
         mock_storage.save_file_from_path.return_value = "gs://bucket/file"
 
-        service.process_recall_transcript("transcript-456", "recording-789")
+        with patch.object(service, "_download_transcript", return_value="/tmp/transcript.json"):
+            service.process_recall_transcript("transcript-456", "recording-789")
 
         mock_storage.update_meeting.assert_any_call(
             "recording-789", {"status": "processing"}

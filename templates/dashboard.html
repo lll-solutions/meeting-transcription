@@ -66,6 +66,13 @@
         </div>
     </div>
     
+    <!-- Google Meet Transcripts (auto-refreshes) -->
+    <div id="google-meet-status"
+        hx-get="/ui/google-meet/transcripts"
+        hx-trigger="load, every 15s"
+        hx-swap="innerHTML">
+    </div>
+
     <!-- Meeting list -->
     <div id="meetings-list" hx-get="/ui/meetings-list" hx-trigger="every 10s" hx-swap="innerHTML">
         {% include "partials/meeting_list.html" %}

@@ -9,6 +9,8 @@ Handles business logic for meeting bot operations:
 """
 
 import asyncio
+from collections.abc import Coroutine
+from typing import Any
 
 from meeting_transcription.api.storage import MeetingStorage
 from meeting_transcription.models.meeting import Meeting
@@ -40,6 +42,22 @@ class MeetingService:
         if self._provider is None:
             self._provider = get_provider()
         return self._provider
+
+    @staticmethod
+    def _run_async(coro: Coroutine) -> Any:
+        """Run an async coroutine synchronously (Python 3.12+ safe)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # Already in an async context — create a task
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, coro).result()
+        else:
+            return asyncio.run(coro)
 
     def create_meeting(
         self,
@@ -76,17 +94,11 @@ class MeetingService:
             bot_name = "Meeting Assistant Bot"
 
         # Create meeting via provider (async -> sync bridge)
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        meeting_id = loop.run_until_complete(
+        meeting_id = self._run_async(
             self.provider.create_meeting(
                 meeting_url,
                 webhook_url=webhook_url,
-                bot_name=bot_name
+                bot_name=bot_name,
             )
         )
 
@@ -142,17 +154,15 @@ class MeetingService:
 
         # Fallback to provider API for status
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        try:
-            status = loop.run_until_complete(self.provider.get_status(meeting_id))
+            status = self._run_async(self.provider.get_status(meeting_id))
             if status and status != "error":
                 return Meeting.from_dict({
                     "id": meeting_id,
-                    "status": status
+                    "status": status,
+                    "user": "",
+                    "meeting_url": "",
+                    "bot_name": "",
+                    "created_at": "",
                 })
         except Exception:
             pass
@@ -170,13 +180,7 @@ class MeetingService:
             True if successful, False otherwise
         """
         # Leave meeting via provider
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        success = loop.run_until_complete(self.provider.leave_meeting(meeting_id))
+        success = self._run_async(self.provider.leave_meeting(meeting_id))
 
         if success:
             # Update status in storage

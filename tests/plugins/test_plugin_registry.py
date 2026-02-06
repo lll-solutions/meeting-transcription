@@ -5,11 +5,11 @@ Tests for plugin registry.
 import pytest
 from meeting_transcription.plugins import (
     PluginRegistry,
-    register_plugin,
     get_plugin,
-    list_plugins,
+    get_registry,
     has_plugin,
-    get_registry
+    list_plugins,
+    register_plugin,
 )
 
 

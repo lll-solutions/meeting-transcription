@@ -10,7 +10,6 @@ Test coverage:
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from meeting_transcription.services.transcript_service import TranscriptService
 
 
@@ -52,6 +51,8 @@ class TestQueueUploadedTranscript:
                 user="user@example.com",
                 transcript_data="not a list",  # type: ignore[arg-type]
                 title="Test",
+                plugin=None,
+                metadata=None,
                 service_url="https://example.com"
             )
 
@@ -65,6 +66,8 @@ class TestQueueUploadedTranscript:
                 user="user@example.com",
                 transcript_data=[],
                 title="Test",
+                plugin=None,
+                metadata=None,
                 service_url="https://example.com"
             )
 
@@ -86,6 +89,8 @@ class TestQueueUploadedTranscript:
                 user="user@example.com",
                 transcript_data=sample_transcript,
                 title="Test Meeting",
+                plugin=None,
+                metadata=None,
                 service_url="https://example.com"
             )
 
@@ -113,6 +118,8 @@ class TestQueueUploadedTranscript:
                     user="user@example.com",
                     transcript_data=sample_transcript,
                     title="Test",
+                    plugin=None,
+                    metadata=None,
                     service_url="https://example.com"
                 )
 
@@ -139,6 +146,8 @@ class TestQueueUploadedTranscript:
                     user="user@example.com",
                     transcript_data=sample_transcript,
                     title="Test",
+                    plugin=None,
+                    metadata=None,
                     service_url="https://example.com"
                 )
 

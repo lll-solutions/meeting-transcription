@@ -2,11 +2,11 @@
 Tests for EducationalPlugin.
 """
 
-import pytest
 import json
 import os
 import tempfile
-from unittest.mock import Mock, patch
+from unittest.mock import patch
+
 from meeting_transcription.plugins.educational_plugin import EducationalPlugin
 
 
@@ -85,10 +85,10 @@ class TestEducationalPlugin:
         assert plugin.include_code_examples is True  # Default
         assert plugin.summarization_depth == "detailed"  # Default
 
-    @patch('src.plugins.educational_plugin.create_educational_chunks')
-    @patch('src.plugins.educational_plugin.summarize_educational_content')
-    @patch('src.plugins.educational_plugin.create_study_guide')
-    @patch('src.plugins.educational_plugin.markdown_to_pdf')
+    @patch('meeting_transcription.plugins.educational_plugin.create_educational_chunks')
+    @patch('meeting_transcription.plugins.educational_plugin.summarize_educational_content')
+    @patch('meeting_transcription.plugins.educational_plugin.create_study_guide')
+    @patch('meeting_transcription.plugins.educational_plugin.markdown_to_pdf')
     def test_process_transcript_success(
         self,
         mock_pdf,
@@ -149,10 +149,10 @@ class TestEducationalPlugin:
             assert os.path.exists(outputs["study_guide_md"])
             assert os.path.exists(outputs["study_guide_pdf"])
 
-    @patch('src.plugins.educational_plugin.create_educational_chunks')
-    @patch('src.plugins.educational_plugin.summarize_educational_content')
-    @patch('src.plugins.educational_plugin.create_study_guide')
-    @patch('src.plugins.educational_plugin.markdown_to_pdf')
+    @patch('meeting_transcription.plugins.educational_plugin.create_educational_chunks')
+    @patch('meeting_transcription.plugins.educational_plugin.summarize_educational_content')
+    @patch('meeting_transcription.plugins.educational_plugin.create_study_guide')
+    @patch('meeting_transcription.plugins.educational_plugin.markdown_to_pdf')
     def test_process_transcript_pdf_disabled(
         self,
         mock_pdf,
@@ -201,10 +201,10 @@ class TestEducationalPlugin:
             # Verify PDF conversion was not called
             mock_pdf.convert_markdown_to_pdf.assert_not_called()
 
-    @patch('src.plugins.educational_plugin.create_educational_chunks')
-    @patch('src.plugins.educational_plugin.summarize_educational_content')
-    @patch('src.plugins.educational_plugin.create_study_guide')
-    @patch('src.plugins.educational_plugin.markdown_to_pdf')
+    @patch('meeting_transcription.plugins.educational_plugin.create_educational_chunks')
+    @patch('meeting_transcription.plugins.educational_plugin.summarize_educational_content')
+    @patch('meeting_transcription.plugins.educational_plugin.create_study_guide')
+    @patch('meeting_transcription.plugins.educational_plugin.markdown_to_pdf')
     def test_process_transcript_uses_configured_chunk_duration(
         self,
         mock_pdf,
