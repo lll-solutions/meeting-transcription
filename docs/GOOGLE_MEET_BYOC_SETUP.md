@@ -2,27 +2,23 @@
 
 Self-hosted deployments use **BYOC (Bring Your Own Credentials)** mode, where you create your own Google Cloud OAuth app in Internal mode for your Workspace domain.
 
+> **Note:** The `setup.sh` script already enables the required GCP APIs (Meet, Pub/Sub, Workspace Events) and creates the Pub/Sub topic and push subscription. This guide only covers the OAuth app setup that must be done manually in the Google Cloud Console.
+
 ## Prerequisites
 
 - Google Workspace account (Google Meet transcripts require Workspace, not personal Gmail)
-- Google Cloud project with billing enabled
-- Admin access to Google Workspace (for Internal OAuth app approval)
+- Completed `setup.sh` (which provisions APIs, Pub/Sub, and all other infrastructure)
 
 ## Step 1: Create a Google Cloud OAuth App
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Select or create a project
-3. Navigate to **APIs & Services > OAuth consent screen**
-4. Select **Internal** user type (restricts access to your Workspace domain)
-5. Fill in the app details:
+1. Go to [Google Cloud Console](https://console.cloud.google.com) and select your project
+2. Navigate to **APIs & Services > OAuth consent screen**
+3. Select **Internal** user type (restricts access to your Workspace domain)
+4. Fill in the app details:
    - App name: "Meeting Transcription" (or your preferred name)
    - User support email: your admin email
    - Authorized domain: your domain
-6. Click **Save and Continue**
-
-## Step 2: Configure OAuth Scopes
-
-Add these scopes on the Scopes page:
+5. On the Scopes page, add these scopes:
 
 | Scope | Purpose |
 |-------|---------|
@@ -32,9 +28,9 @@ Add these scopes on the Scopes page:
 | `meetings.space.readonly` | Read Meet conference records and transcripts |
 | `meetings.space.created` | Access transcripts from meetings the user created |
 
-Click **Save and Continue**, then **Back to Dashboard**.
+6. Click **Save and Continue**, then **Back to Dashboard**
 
-## Step 3: Create OAuth Credentials
+## Step 2: Create OAuth Credentials
 
 1. Go to **APIs & Services > Credentials**
 2. Click **+ Create Credentials > OAuth client ID**
@@ -50,63 +46,22 @@ Click **Save and Continue**, then **Back to Dashboard**.
    ```
 6. Click **Create** and note the **Client ID** and **Client Secret**
 
-## Step 4: Enable Required APIs
+## Step 3: Configure Environment Variables
 
-In the Google Cloud Console, enable these APIs:
-
-```bash
-gcloud services enable meet.googleapis.com
-gcloud services enable pubsub.googleapis.com
-gcloud services enable workspaceevents.googleapis.com
-```
-
-Or search for each in **APIs & Services > Library**:
-- Google Meet REST API
-- Cloud Pub/Sub API
-- Google Workspace Events API
-
-## Step 5: Set Up Pub/Sub
-
-The app auto-creates Pub/Sub resources on first use, but you can pre-create them:
+Add these to your Cloud Run service (or `.env` for local dev):
 
 ```bash
-# Create topic
-gcloud pubsub topics create meet-transcript-events
-
-# Create push subscription pointing to your service
-gcloud pubsub subscriptions create meet-transcript-push \
-  --topic=meet-transcript-events \
-  --push-endpoint=https://YOUR_SERVICE_URL/webhook/google-meet
-```
-
-## Step 6: Configure Environment Variables
-
-Set these environment variables in your deployment:
-
-```bash
-# Required: OAuth credentials from Step 3
+# Required: OAuth credentials from Step 2
 GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
 
 # Required: Set mode to BYOC
 GOOGLE_OAUTH_MODE=byoc
-
-# Required: Your service URL (used for OAuth redirect and Pub/Sub push)
-SERVICE_URL=https://your-service.example.com
-
-# Optional: Override auto-detected redirect URI
-# GOOGLE_OAUTH_REDIRECT_URI=https://your-service.example.com/oauth/google/callback
-
-# Required: GCP project (usually already set for Cloud Run/GKE)
-GOOGLE_CLOUD_PROJECT=your-gcp-project-id
-
-# Optional: Override Pub/Sub defaults
-# GOOGLE_PUBSUB_PROJECT_ID=your-gcp-project-id
-# GOOGLE_PUBSUB_TOPIC=meet-transcript-events
-# GOOGLE_PUBSUB_SUBSCRIPTION=meet-transcript-push
 ```
 
-## Step 7: Connect Your Google Account
+The remaining settings (`SERVICE_URL`, `GOOGLE_CLOUD_PROJECT`, Pub/Sub config) are already configured by `setup.sh`.
+
+## Step 4: Connect Your Google Account
 
 1. Open your deployment at `https://YOUR_SERVICE_URL/settings`
 2. Click **Connect Google Meet**
