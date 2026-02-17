@@ -24,13 +24,6 @@ from .workspace_events import WorkspaceEventsManager
 logger = logging.getLogger(__name__)
 
 
-def sanitize_for_logging(value):
-    """Remove newline and carriage return characters to prevent log injection."""
-    if not isinstance(value, str):
-        return value
-    return value.replace("\r", "").replace("\n", "")
-
-
 google_meet_bp = Blueprint("google_meet", __name__)
 
 
@@ -63,7 +56,6 @@ def google_callback():
     error = request.args.get("error")
 
     if error:
-        logger.warning("Google OAuth error: %s", sanitize_for_logging(error))
         return redirect("/settings?error=oauth_denied")
 
     if not code or not state:
