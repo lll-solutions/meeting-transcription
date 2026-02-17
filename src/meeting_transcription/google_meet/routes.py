@@ -12,7 +12,6 @@ Provides:
 
 import logging
 import os
-from urllib.parse import quote
 
 from flask import Blueprint, g, jsonify, redirect, render_template, request
 
@@ -56,7 +55,8 @@ def google_callback():
     error = request.args.get("error")
 
     if error:
-        return redirect(f"/settings?error={quote(str(error))}")
+        logger.warning("Google OAuth error: %s", error)
+        return redirect("/settings?error=oauth_denied")
 
     if not code or not state:
         return redirect("/settings?error=missing_params")
@@ -76,7 +76,8 @@ def google_callback():
 
         return redirect("/settings?connected=true")
     except ValueError as e:
-        return redirect(f"/settings?error={quote(str(e))}")
+        logger.warning("OAuth callback failed: %s", e)
+        return redirect("/settings?error=oauth_failed")
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +155,8 @@ def google_subscribe():
         manager.create_subscription(user_id)
         return redirect("/settings?subscribed=true")
     except ValueError as e:
-        return redirect(f"/settings?error={quote(str(e))}")
+        logger.warning("Subscription creation failed: %s", e)
+        return redirect("/settings?error=subscription_failed")
 
 
 # ---------------------------------------------------------------------------
