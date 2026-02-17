@@ -20,7 +20,6 @@ from meeting_transcription.api import auth_db
 try:
     import firebase_admin
     from firebase_admin import auth as firebase_auth
-    from firebase_admin import credentials  # noqa: F401
     HAS_FIREBASE = True
 except ImportError:
     HAS_FIREBASE = False
