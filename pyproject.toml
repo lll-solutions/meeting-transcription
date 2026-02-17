@@ -38,7 +38,7 @@ firebase-admin = "^6.2.0"
 
 # Utilities
 schedule = "^1.2.0"                  # For scheduled tasks
-gunicorn = "^22.0.0"                 # Production WSGI server
+gunicorn = "^25.1.0"                 # Production WSGI server
 bcrypt = "^5.0.0"
 
 # Security
