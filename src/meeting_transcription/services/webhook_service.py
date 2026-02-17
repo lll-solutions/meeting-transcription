@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from meeting_transcription.api.storage import MeetingStorage
-from meeting_transcription.providers import TranscriptProvider, ProviderType, get_provider
+from meeting_transcription.providers import ProviderType, TranscriptProvider, get_provider
 
 
 class WebhookService:
@@ -123,7 +123,7 @@ class WebhookService:
         elif event == "transcript.failed":
             self._handle_transcript_failed(event_data)
         else:
-            print(f"ℹ️ Unhandled event: {event}")
+            print(f"[info] Unhandled event: {event}")
 
     def _handle_bot_joining(self, event_data: dict) -> None:
         """

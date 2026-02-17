@@ -13,7 +13,7 @@ Supports formats:
    Attorney Sarah Chen: Please state your name for the record.
 """
 import re
-from typing import List, Dict, Any
+from typing import Any
 
 
 def parse_timestamp(timestamp_str: str) -> float:
@@ -70,7 +70,7 @@ def parse_vtt_timestamp(timestamp_str: str) -> float:
     return total_seconds
 
 
-def detect_text_transcript_format(text: str) -> Dict[str, Any]:
+def detect_text_transcript_format(text: str) -> dict[str, Any]:
     """
     Detect if text is in transcript format and identify the variant.
 
@@ -121,7 +121,7 @@ def detect_text_transcript_format(text: str) -> Dict[str, Any]:
     }
 
 
-def parse_vtt_to_combined_format(text: str) -> List[Dict[str, Any]]:
+def parse_vtt_to_combined_format(text: str) -> list[dict[str, Any]]:
     """
     Parse VTT (WebVTT) transcript into combined JSON format.
 
@@ -258,7 +258,7 @@ def parse_vtt_to_combined_format(text: str) -> List[Dict[str, Any]]:
     return combined_transcript
 
 
-def parse_bracketed_to_combined_format(text: str) -> List[Dict[str, Any]]:
+def parse_bracketed_to_combined_format(text: str) -> list[dict[str, Any]]:
     """
     Parse bracketed timestamp transcript into combined JSON format.
 
@@ -392,7 +392,7 @@ def parse_bracketed_to_combined_format(text: str) -> List[Dict[str, Any]]:
     return combined_transcript
 
 
-def parse_text_to_combined_format(text: str) -> List[Dict[str, Any]]:
+def parse_text_to_combined_format(text: str) -> list[dict[str, Any]]:
     """
     Auto-detect format and parse text transcript into combined JSON format.
 
@@ -415,7 +415,7 @@ def parse_text_to_combined_format(text: str) -> List[Dict[str, Any]]:
         raise ValueError("Text does not appear to be a valid transcript format")
 
     if detection['format'] == 'vtt':
-        print(f"📄 Parsing VTT (Zoom) format...")
+        print("📄 Parsing VTT (Zoom) format...")
         return parse_vtt_to_combined_format(text)
     elif detection['format'] in ['google_meet', 'generic_text', 'zoom_text']:
         print(f"📄 Parsing bracketed timestamp format ({detection['format']})...")

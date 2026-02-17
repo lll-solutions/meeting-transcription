@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
 from pathlib import Path
+from typing import Any
 
 
 class BaseFormatter(ABC):
@@ -18,9 +18,9 @@ class BaseFormatter(ABC):
     @abstractmethod
     def format_output(
         self,
-        summary_data: Dict[str, Any],
+        summary_data: dict[str, Any],
         output_dir: Path
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Format LLM output into final documents.
 
@@ -42,7 +42,7 @@ class BaseFormatter(ABC):
         pass
 
     @abstractmethod
-    def get_output_types(self) -> List[str]:
+    def get_output_types(self) -> list[str]:
         """
         Return list of output types this formatter produces.
 

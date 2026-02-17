@@ -6,11 +6,9 @@ that are ready to be joined.
 """
 
 import os
-import time
 import threading
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from typing import Callable, Optional
+import time
+from collections.abc import Callable
 
 from .scheduled_meetings import get_scheduled_meeting_storage
 from .timezone_utils import utc_now
@@ -21,7 +19,7 @@ class MeetingScheduler:
 
     def __init__(
         self,
-        join_callback: Callable[[str, str, str], Optional[str]],
+        join_callback: Callable[[str, str, str], str | None],
         check_interval: int = 60
     ):
         """
@@ -133,13 +131,13 @@ class MeetingScheduler:
 _scheduler = None
 
 
-def get_scheduler() -> Optional[MeetingScheduler]:
+def get_scheduler() -> MeetingScheduler | None:
     """Get the global scheduler instance."""
     global _scheduler
     return _scheduler
 
 
-def init_scheduler(join_callback: Callable[[str, str, str], Optional[str]]):
+def init_scheduler(join_callback: Callable[[str, str, str], str | None]):
     """
     Initialize and start the global scheduler.
 

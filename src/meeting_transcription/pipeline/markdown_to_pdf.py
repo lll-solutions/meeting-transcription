@@ -2,8 +2,9 @@
 """
 Convert Markdown to PDF with nice formatting using WeasyPrint.
 """
-import sys
 import os
+import sys
+
 
 def convert_markdown_to_pdf(md_file, output_pdf=None):
     """Convert markdown file to PDF.
@@ -17,7 +18,7 @@ def convert_markdown_to_pdf(md_file, output_pdf=None):
     """
     try:
         import markdown
-        from weasyprint import HTML, CSS
+        from weasyprint import HTML
         from weasyprint.text.fonts import FontConfiguration
     except ImportError as e:
         print(f"✗ Missing required library: {e}")
@@ -25,7 +26,7 @@ def convert_markdown_to_pdf(md_file, output_pdf=None):
         return None
 
     # Read markdown content
-    with open(md_file, 'r') as f:
+    with open(md_file) as f:
         md_content = f.read()
 
     # Convert markdown to HTML

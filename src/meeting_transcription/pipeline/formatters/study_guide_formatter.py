@@ -6,18 +6,17 @@ implementations, maintaining 100% backward compatibility while conforming
 to the BaseFormatter interface.
 """
 
-from typing import Dict, Any, List
-from pathlib import Path
 import json
-import sys
 import os
-import tempfile
+import sys
+from pathlib import Path
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from pipeline.core import BaseFormatter
 from pipeline import create_study_guide, markdown_to_pdf
+from pipeline.core import BaseFormatter
 
 
 class StudyGuideFormatter(BaseFormatter):
@@ -43,9 +42,9 @@ class StudyGuideFormatter(BaseFormatter):
 
     def format_output(
         self,
-        summary_data: Dict[str, Any],
+        summary_data: dict[str, Any],
         output_dir: Path
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Format educational summary into study guide (Markdown and optional PDF).
 
@@ -110,7 +109,7 @@ class StudyGuideFormatter(BaseFormatter):
 
         return outputs
 
-    def get_output_types(self) -> List[str]:
+    def get_output_types(self) -> list[str]:
         """
         Return list of output types this formatter produces.
 

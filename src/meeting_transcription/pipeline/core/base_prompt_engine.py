@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Any
 
 from .types import ContentType
 
@@ -14,8 +14,8 @@ class PromptContext:
     session data for continuity (particularly important for therapy sessions).
     """
     content_type: ContentType
-    session_metadata: Dict[str, Any]  # Meeting/session metadata
-    previous_session_data: Optional[Dict[str, Any]] = None  # For therapy continuity
+    session_metadata: dict[str, Any]  # Meeting/session metadata
+    previous_session_data: dict[str, Any] | None = None  # For therapy continuity
 
 
 class BasePromptEngine(ABC):
@@ -33,7 +33,7 @@ class BasePromptEngine(ABC):
     @abstractmethod
     def create_chunk_analysis_prompt(
         self,
-        chunk_data: Dict[str, Any],
+        chunk_data: dict[str, Any],
         context: PromptContext
     ) -> str:
         """
@@ -51,7 +51,7 @@ class BasePromptEngine(ABC):
     @abstractmethod
     def create_overall_summary_prompt(
         self,
-        chunk_analyses: List[Dict[str, Any]],
+        chunk_analyses: list[dict[str, Any]],
         context: PromptContext
     ) -> str:
         """
@@ -72,7 +72,7 @@ class BasePromptEngine(ABC):
     @abstractmethod
     def create_action_items_prompt(
         self,
-        overall_summary: Dict[str, Any],
+        overall_summary: dict[str, Any],
         context: PromptContext
     ) -> str:
         """

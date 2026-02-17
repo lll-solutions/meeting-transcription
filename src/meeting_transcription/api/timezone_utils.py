@@ -3,9 +3,7 @@ Timezone utilities for handling conversions and common timezones.
 """
 
 from datetime import datetime
-from typing import Optional
 from zoneinfo import ZoneInfo
-
 
 # Common US timezones
 COMMON_TIMEZONES = [
@@ -19,17 +17,7 @@ COMMON_TIMEZONES = [
 ]
 
 # Full list of common timezones
-ALL_TIMEZONES = COMMON_TIMEZONES + [
-    "UTC",
-    "Europe/London",
-    "Europe/Paris",
-    "Europe/Berlin",
-    "Asia/Tokyo",
-    "Asia/Shanghai",
-    "Asia/Dubai",
-    "Asia/Kolkata",
-    "Australia/Sydney",
-]
+ALL_TIMEZONES = [*COMMON_TIMEZONES, "UTC", "Europe/London", "Europe/Paris", "Europe/Berlin", "Asia/Tokyo", "Asia/Shanghai", "Asia/Dubai", "Asia/Kolkata", "Australia/Sydney"]
 
 
 def utc_now() -> datetime:
@@ -88,7 +76,7 @@ def format_datetime_for_user(dt: datetime, user_timezone: str, fmt: str = "%Y-%m
     return local_dt.strftime(fmt)
 
 
-def parse_user_datetime(dt_str: str, user_timezone: str) -> Optional[datetime]:
+def parse_user_datetime(dt_str: str, user_timezone: str) -> datetime | None:
     """
     Parse a datetime string from user input and convert to UTC.
 

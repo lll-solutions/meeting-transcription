@@ -6,16 +6,16 @@ maintaining 100% backward compatibility while conforming to the
 BasePromptEngine interface.
 """
 
-from typing import List, Dict, Any
 import json
-import sys
 import os
+import sys
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from pipeline.core import BasePromptEngine, PromptContext
 from pipeline import educational_prompts
+from pipeline.core import BasePromptEngine, PromptContext
 
 
 class EducationalPromptEngine(BasePromptEngine):
@@ -33,7 +33,7 @@ class EducationalPromptEngine(BasePromptEngine):
 
     def create_chunk_analysis_prompt(
         self,
-        chunk_data: Dict[str, Any],
+        chunk_data: dict[str, Any],
         context: PromptContext
     ) -> str:
         """
@@ -61,7 +61,7 @@ class EducationalPromptEngine(BasePromptEngine):
 
     def create_overall_summary_prompt(
         self,
-        chunk_analyses: List[Dict[str, Any]],
+        chunk_analyses: list[dict[str, Any]],
         context: PromptContext
     ) -> str:
         """
@@ -100,7 +100,7 @@ class EducationalPromptEngine(BasePromptEngine):
 
     def create_action_items_prompt(
         self,
-        overall_summary: Dict[str, Any],
+        overall_summary: dict[str, Any],
         context: PromptContext
     ) -> str:
         """

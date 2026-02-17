@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
 from dataclasses import dataclass
+from typing import Any
 
-from .types import ContentType, ChunkStrategy
+from .types import ChunkStrategy, ContentType
 
 
 @dataclass
@@ -12,7 +12,7 @@ class ChunkMetadata:
     chunk_strategy: ChunkStrategy
     total_chunks: int
     total_duration_minutes: int
-    additional_metadata: Dict[str, Any]
+    additional_metadata: dict[str, Any]
 
 
 class BaseChunker(ABC):
@@ -31,9 +31,9 @@ class BaseChunker(ABC):
     @abstractmethod
     def chunk_transcript(
         self,
-        combined_transcript: List[Dict],
+        combined_transcript: list[dict],
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Chunk a combined transcript into processing units.
 

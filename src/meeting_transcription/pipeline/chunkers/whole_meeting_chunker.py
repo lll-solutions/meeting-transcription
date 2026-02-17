@@ -4,10 +4,10 @@ Whole Meeting Chunker
 Processes entire transcript as a single chunk.
 Used by plugins that need full meeting context (therapy, legal, etc.)
 """
-from typing import List, Dict, Any
+from typing import Any
 
 from ..core.base_chunker import BaseChunker, ChunkMetadata
-from ..core.types import ContentType, ChunkStrategy
+from ..core.types import ChunkStrategy, ContentType
 
 
 class WholeMeetingChunker(BaseChunker):
@@ -25,9 +25,9 @@ class WholeMeetingChunker(BaseChunker):
 
     def chunk_transcript(
         self,
-        combined_transcript: List[Dict],
+        combined_transcript: list[dict],
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Process entire meeting as one chunk.
 
@@ -86,7 +86,7 @@ class WholeMeetingChunker(BaseChunker):
             'chunks': [chunk]
         }
 
-    def _create_metadata(self, duration_minutes: int, kwargs: Dict[str, Any]) -> ChunkMetadata:
+    def _create_metadata(self, duration_minutes: int, kwargs: dict[str, Any]) -> ChunkMetadata:
         """Create chunk metadata."""
         # Allow content_type to be specified in kwargs, default to THERAPY
         content_type = kwargs.get('content_type', ContentType.THERAPY)

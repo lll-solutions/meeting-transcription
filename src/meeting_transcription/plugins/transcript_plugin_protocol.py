@@ -4,7 +4,7 @@ Plugin interface for meeting transcription processing.
 Defines the contract that all transcript processing plugins must implement.
 """
 
-from typing import Protocol, Dict, Any
+from typing import Any, Protocol
 
 
 class TranscriptPlugin(Protocol):
@@ -43,7 +43,7 @@ class TranscriptPlugin(Protocol):
         ...
 
     @property
-    def metadata_schema(self) -> Dict[str, Any]:
+    def metadata_schema(self) -> dict[str, Any]:
         """
         Declare what metadata this plugin needs.
 
@@ -69,7 +69,7 @@ class TranscriptPlugin(Protocol):
         ...
 
     @property
-    def settings_schema(self) -> Dict[str, Any]:
+    def settings_schema(self) -> dict[str, Any]:
         """
         Declare user-configurable settings.
 
@@ -95,7 +95,7 @@ class TranscriptPlugin(Protocol):
         """
         ...
 
-    def configure(self, settings: Dict[str, Any]) -> None:
+    def configure(self, settings: dict[str, Any]) -> None:
         """
         Apply settings to plugin instance.
 
@@ -112,8 +112,8 @@ class TranscriptPlugin(Protocol):
         combined_transcript_path: str,
         output_dir: str,
         llm_provider: str,
-        metadata: Dict[str, Any]
-    ) -> Dict[str, str]:
+        metadata: dict[str, Any]
+    ) -> dict[str, str]:
         """
         Process the combined transcript through domain-specific pipeline.
 

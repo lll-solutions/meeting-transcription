@@ -7,21 +7,20 @@ Supports:
 - Webhook Signature - For Recall.ai webhooks
 """
 
-import os
-import hmac
-import hashlib
 import functools
+import hmac
+import os
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Dict, Any
-from flask import request, g, jsonify
+from typing import Any
 
+from flask import g, jsonify, request
 from meeting_transcription.api import auth_db
 
 # Try to import Firebase Admin
 try:
     import firebase_admin
     from firebase_admin import auth as firebase_auth
-    from firebase_admin import credentials
+    from firebase_admin import credentials  # noqa: F401
     HAS_FIREBASE = True
 except ImportError:
     HAS_FIREBASE = False
@@ -29,13 +28,13 @@ except ImportError:
 
 class User:
     """Authenticated user information."""
-    
+
     def __init__(
         self,
         id: str,
-        email: Optional[str] = None,
-        name: Optional[str] = None,
-        picture: Optional[str] = None,
+        email: str | None = None,
+        name: str | None = None,
+        picture: str | None = None,
         provider: str = "unknown"
     ):
         self.id = id
@@ -43,8 +42,8 @@ class User:
         self.name = name
         self.picture = picture
         self.provider = provider
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "email": self.email,
@@ -52,7 +51,7 @@ class User:
             "picture": self.picture,
             "provider": self.provider
         }
-    
+
     def __str__(self) -> str:
         return self.email or self.id
 
@@ -60,23 +59,23 @@ class User:
 class AuthProvider(ABC):
     """
     Base class for authentication providers.
-    
+
     This abstraction allows swapping auth providers without changing application code.
     """
-    
+
     @abstractmethod
-    def verify_token(self, token: str) -> Optional[User]:
+    def verify_token(self, token: str) -> User | None:
         """
         Verify an authentication token.
-        
+
         Args:
             token: The token to verify (usually from Authorization header)
-        
+
         Returns:
             User object if valid, None otherwise
         """
         pass
-    
+
     @property
     @abstractmethod
     def name(self) -> str:
@@ -86,15 +85,15 @@ class AuthProvider(ABC):
 
 class DBAuthProvider(AuthProvider):
     """Database Authentication provider (Firestore + JWT)."""
-    
+
     def __init__(self):
         self.service = auth_db.get_auth_service()
-    
+
     @property
     def name(self) -> str:
         return "db"
-    
-    def verify_token(self, token: str) -> Optional[User]:
+
+    def verify_token(self, token: str) -> User | None:
         """Verify a JWT token."""
         db_user = self.service.verify_token(token)
         if db_user:
@@ -109,21 +108,21 @@ class DBAuthProvider(AuthProvider):
 
 class FirebaseAuthProvider(AuthProvider):
     """Firebase Authentication provider."""
-    
-    def __init__(self, project_id: str = None):
+
+    def __init__(self, project_id: str | None = None):
         self.project_id = project_id or os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
         self._initialized = False
         self._init_firebase()
-    
+
     def _init_firebase(self):
         """Initialize Firebase Admin SDK."""
         if not HAS_FIREBASE:
             print("⚠️ firebase-admin not installed - Firebase Auth disabled")
             return
-        
+
         if self._initialized:
             return
-        
+
         try:
             # Check if already initialized
             firebase_admin.get_app()
@@ -137,19 +136,19 @@ class FirebaseAuthProvider(AuthProvider):
                 print(f"✅ Firebase Auth initialized (project: {self.project_id})")
             except Exception as e:
                 print(f"⚠️ Could not initialize Firebase Auth: {e}")
-    
+
     @property
     def name(self) -> str:
         return "firebase"
-    
-    def verify_token(self, token: str) -> Optional[User]:
+
+    def verify_token(self, token: str) -> User | None:
         """Verify a Firebase ID token."""
         if not HAS_FIREBASE or not self._initialized:
             return None
-        
+
         try:
             decoded = firebase_auth.verify_id_token(token)
-            
+
             return User(
                 id=decoded.get("uid"),
                 email=decoded.get("email"),
@@ -168,50 +167,50 @@ class FirebaseAuthProvider(AuthProvider):
 
 class APIKeyProvider(AuthProvider):
     """API Key authentication provider for programmatic access."""
-    
-    def __init__(self, api_key: str = None):
+
+    def __init__(self, api_key: str | None = None):
         self.api_key = api_key or os.getenv("API_KEY", "")
-    
+
     @property
     def name(self) -> str:
         return "api_key"
-    
-    def verify_token(self, token: str) -> Optional[User]:
+
+    def verify_token(self, token: str) -> User | None:
         """Verify an API key."""
         if not self.api_key:
             return None
-        
+
         if hmac.compare_digest(token, self.api_key):
             # Get user info from headers if available (trusted because API key is valid)
             user_name = request.headers.get("X-User-Name", "API User")
             user_email = request.headers.get("X-User-Email")
-            
+
             return User(
                 id=user_email or "api-user",
                 email=user_email,
                 name=user_name,
                 provider="api_key"
             )
-        
+
         return None
 
 
 class AuthConfig:
     """Authentication configuration."""
-    
+
     def __init__(self):
         # Primary auth provider
         self.auth_provider = os.getenv("AUTH_PROVIDER", "db")
-        
+
         # Firebase settings
         self.firebase_project_id = os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
-        
+
         # API Key (advanced users)
         self.api_key = os.getenv("API_KEY", "")
-        
+
         # Webhook verification
         self.recall_webhook_secret = os.getenv("RECALL_WEBHOOK_SECRET", "")
-        
+
         # Public endpoints (no auth required)
         self.public_endpoints = [
             "/",
@@ -224,49 +223,49 @@ class AuthConfig:
             "/api/auth/setup",  # New setup endpoint
             "/api/scheduled-meetings/execute"  # Cloud Scheduler endpoint
         ]
-        
+
         # Development mode
         self.allow_anonymous = os.getenv("AUTH_ALLOW_ANONYMOUS", "false").lower() == "true"
 
 
 # Global instances
-_config: Optional[AuthConfig] = None
-_providers: Dict[str, AuthProvider] = {}
+_config: AuthConfig | None = None
+_providers: dict[str, AuthProvider] = {}
 
 
 def init_auth(app=None) -> AuthConfig:
     """
     Initialize authentication.
-    
+
     Call this at application startup.
     """
     global _config, _providers
-    
+
     _config = AuthConfig()
-    
+
     # Initialize providers based on config
     if _config.auth_provider == "db":
         _providers["db"] = DBAuthProvider()
-        
+
     elif _config.auth_provider == "firebase":
         if HAS_FIREBASE:
             _providers["firebase"] = FirebaseAuthProvider(_config.firebase_project_id)
         else:
             print("⚠️ Firebase Auth requested but firebase-admin not installed")
-    
+
     # API Key is always available if configured
     if _config.api_key:
         _providers["api_key"] = APIKeyProvider(_config.api_key)
-    
+
     # Report configuration
     provider_names = list(_providers.keys())
     if _config.allow_anonymous:
         provider_names.append("anonymous")
-    
+
     print(f"🔐 Auth providers: {', '.join(provider_names) or 'None'}")
     if _config.recall_webhook_secret:
-        print(f"🔐 Webhook verification: enabled")
-    
+        print("🔐 Webhook verification: enabled")
+
     return _config
 
 
@@ -278,7 +277,7 @@ def get_config() -> AuthConfig:
     return _config
 
 
-def authenticate_request() -> Tuple[Optional[User], Optional[str]]:
+def authenticate_request() -> tuple[User | None, str | None]:
     """
     Authenticate the current request using available providers.
 
@@ -290,7 +289,7 @@ def authenticate_request() -> Tuple[Optional[User], Optional[str]]:
     Returns:
         tuple: (User, provider_name) or (None, None) if not authenticated
     """
-    config = get_config()
+    get_config()
 
     # Get token from httpOnly cookie (preferred - XSS protection)
     token = request.cookies.get("auth_token")
@@ -326,26 +325,26 @@ def authenticate_request() -> Tuple[Optional[User], Optional[str]]:
 def get_current_user() -> str:
     """
     Get the current authenticated user identifier.
-    
+
     Returns:
         str: User email/id or 'anonymous'
     """
     user, _ = authenticate_request()
-    
+
     if user:
         return str(user)
-    
+
     config = get_config()
     if config.allow_anonymous:
         return "anonymous"
-    
+
     return "anonymous"
 
 
 def require_auth(f):
     """
     Decorator to require authentication on a route.
-    
+
     Usage:
         @app.route('/api/meetings')
         @require_auth
@@ -357,32 +356,32 @@ def require_auth(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         config = get_config()
-        
+
         # Check if this is a public endpoint
         if request.path in config.public_endpoints:
             g.user = get_current_user()
             g.user_info = None
             return f(*args, **kwargs)
-        
+
         user, provider = authenticate_request()
-        
+
         if user:
             g.user = str(user)
             g.user_info = user
             g.auth_provider = provider
             return f(*args, **kwargs)
-        
+
         if config.allow_anonymous:
             g.user = "anonymous"
             g.user_info = None
             g.auth_provider = None
             return f(*args, **kwargs)
-        
+
         return jsonify({
             "error": "Authentication required",
             "message": "Please sign in to access this resource."
         }), 401
-    
+
     return decorated
 
 
@@ -393,12 +392,12 @@ def require_auth_optional(f):
     @functools.wraps(f)
     def decorated(*args, **kwargs):
         user, provider = authenticate_request()
-        
+
         g.user = str(user) if user else "anonymous"
         g.user_info = user
         g.auth_provider = provider
         return f(*args, **kwargs)
-    
+
     return decorated
 
 
@@ -510,7 +509,7 @@ def verify_oidc_token(token: str, expected_audience: str) -> bool:
         if project_number:
             expected_email = f"{project_number}-compute@developer.gserviceaccount.com"
             if email != expected_email:
-                print(f"❌ Token from wrong service account")
+                print("❌ Token from wrong service account")
                 print(f"   Expected: {expected_email}")
                 print(f"   Got: {email}")
                 return False

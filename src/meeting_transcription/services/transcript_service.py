@@ -11,12 +11,12 @@ import asyncio
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from meeting_transcription.api.storage import MeetingStorage
 from meeting_transcription.pipeline import combine_transcript_words
 from meeting_transcription.plugins import TranscriptPlugin
-from meeting_transcription.providers import TranscriptProvider, ProviderType, get_provider
+from meeting_transcription.providers import ProviderType, TranscriptProvider, get_provider
 
 
 class TranscriptService:
@@ -289,7 +289,7 @@ class TranscriptService:
             {
                 "status": "completed",
                 "outputs": outputs,
-                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": datetime.now(UTC).isoformat(),
             },
         )
 
@@ -333,7 +333,7 @@ class TranscriptService:
 
         # Generate default title if not provided
         if not title:
-            title = f'Uploaded Transcript {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")}'
+            title = f'Uploaded Transcript {datetime.now(UTC).strftime("%Y-%m-%d %H:%M")}'
 
         # Generate unique meeting ID using manual provider
         meeting_id = f"upload-{uuid.uuid4().hex[:8]}"

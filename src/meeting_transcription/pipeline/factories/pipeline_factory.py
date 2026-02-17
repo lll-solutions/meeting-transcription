@@ -5,20 +5,20 @@ This factory detects content type and instantiates appropriate
 chunker, prompt engine, and formatter implementations.
 """
 
-from typing import Dict, Any, Optional
-import sys
 import os
+import sys
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from pipeline.core import (
-    PipelineConfig,
-    ContentType,
-)
 from pipeline.chunkers import EducationalTimeBasedChunker
-from pipeline.prompts import EducationalPromptEngine
+from pipeline.core import (
+    ContentType,
+    PipelineConfig,
+)
 from pipeline.formatters import StudyGuideFormatter
+from pipeline.prompts import EducationalPromptEngine
 
 
 class PipelineFactory:
@@ -35,8 +35,8 @@ class PipelineFactory:
 
     @staticmethod
     def detect_content_type(
-        metadata: Optional[Dict[str, Any]] = None,
-        content_type_hint: Optional[str] = None
+        metadata: dict[str, Any] | None = None,
+        content_type_hint: str | None = None
     ) -> ContentType:
         """
         Detect content type from metadata or explicit hint.
@@ -76,7 +76,7 @@ class PipelineFactory:
     def create_pipeline_config(
         content_type: ContentType = ContentType.EDUCATIONAL,
         llm_provider: str = 'vertex_ai',
-        llm_model: Optional[str] = None,
+        llm_model: str | None = None,
         **kwargs
     ) -> PipelineConfig:
         """
@@ -129,8 +129,8 @@ class PipelineFactory:
 
     @staticmethod
     def create_pipeline_from_hint(
-        content_type_hint: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        content_type_hint: str | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs
     ) -> PipelineConfig:
         """

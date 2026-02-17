@@ -6,7 +6,6 @@ environment configuration.
 """
 
 import os
-from typing import Type
 
 from .base import ProviderType, TranscriptProvider
 
@@ -16,10 +15,10 @@ class ProviderRegistry:
 
     def __init__(self):
         """Initialize empty provider registry."""
-        self._providers: dict[ProviderType, Type[TranscriptProvider]] = {}
+        self._providers: dict[ProviderType, type[TranscriptProvider]] = {}
         self._instances: dict[ProviderType, TranscriptProvider] = {}
 
-    def register(self, provider_class: Type[TranscriptProvider]) -> None:
+    def register(self, provider_class: type[TranscriptProvider]) -> None:
         """
         Register a provider class.
 
@@ -31,7 +30,7 @@ class ProviderRegistry:
         """
         # Create a temporary instance to get the provider_type
         # This is safe because __init__ shouldn't have side effects
-        temp_instance = object.__new__(provider_class)
+        object.__new__(provider_class)
         if hasattr(provider_class, 'provider_type') and isinstance(
             provider_class.provider_type, property
         ):
@@ -80,14 +79,14 @@ class ProviderRegistry:
             try:
                 provider_type = ProviderType(provider_type)
             except ValueError:
-                available = ', '.join(p.value for p in self._providers.keys())
+                available = ', '.join(p.value for p in self._providers)
                 raise ValueError(
                     f"Unknown provider type '{provider_type}'. "
                     f"Available: {available}"
                 ) from None
 
         if provider_type not in self._providers:
-            available = ', '.join(p.value for p in self._providers.keys())
+            available = ', '.join(p.value for p in self._providers)
             raise ValueError(
                 f"Provider type '{provider_type.value}' not registered. "
                 f"Available: {available}"
@@ -184,7 +183,7 @@ _registry = ProviderRegistry()
 
 
 # Convenience functions for global registry
-def register_provider(provider_class: Type[TranscriptProvider]) -> None:
+def register_provider(provider_class: type[TranscriptProvider]) -> None:
     """Register a provider class in the global registry."""
     _registry.register(provider_class)
 

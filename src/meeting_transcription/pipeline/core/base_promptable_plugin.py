@@ -6,11 +6,11 @@ Base class for plugins using single-pass LLM structured extraction.
 Handles transcript chunking, LLM calling, and response parsing.
 Subclasses implement domain-specific prompts and output formatting.
 """
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
-from dataclasses import asdict, is_dataclass
 import json
 import os
+from abc import ABC, abstractmethod
+from dataclasses import asdict, is_dataclass
+from typing import Any
 
 from meeting_transcription.utils.llm_client import LLMClient
 
@@ -22,9 +22,9 @@ class BasePromptablePlugin(ABC):
         self,
         combined_transcript_path: str,
         output_dir: str,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         model: str | None = None
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Main pipeline implementation.
 
@@ -66,7 +66,7 @@ class BasePromptablePlugin(ABC):
         prompt = self.get_extraction_prompt(transcript_text, metadata)
 
         # Call LLM (uses AI_MODEL env var if model not provided)
-        print(f"🤖 Calling LLM...")
+        print("🤖 Calling LLM...")
         llm_client = LLMClient(model=model)
 
         response_schema = self.get_response_schema()
@@ -132,7 +132,7 @@ class BasePromptablePlugin(ABC):
         print(f"✅ Pipeline complete! Generated {len(outputs)} outputs")
         return outputs
 
-    def _format_transcript_for_prompt(self, chunked_data: Dict) -> str:
+    def _format_transcript_for_prompt(self, chunked_data: dict) -> str:
         """Format transcript chunks into text for LLM prompt."""
         lines = []
         for chunk in chunked_data['chunks']:
@@ -145,7 +145,7 @@ class BasePromptablePlugin(ABC):
                 lines.append(f"[{minutes:02d}:{seconds:02d}] {speaker}: {text}")
         return "\n".join(lines)
 
-    def _parse_json_response(self, response: str) -> Dict[str, Any]:
+    def _parse_json_response(self, response: str) -> dict[str, Any]:
         """Parse JSON from LLM response, handling markdown code blocks."""
         if '```json' in response:
             json_str = response.split('```json')[1].split('```')[0].strip()
@@ -160,7 +160,7 @@ class BasePromptablePlugin(ABC):
     # ========================================================================
 
     @abstractmethod
-    def get_extraction_prompt(self, transcript_text: str, metadata: Dict[str, Any]) -> str:
+    def get_extraction_prompt(self, transcript_text: str, metadata: dict[str, Any]) -> str:
         """
         Generate the LLM extraction prompt.
 
@@ -176,10 +176,10 @@ class BasePromptablePlugin(ABC):
     @abstractmethod
     def process_llm_response(
         self,
-        llm_response: Dict[str, Any],
+        llm_response: dict[str, Any],
         output_dir: str,
-        metadata: Dict[str, Any]
-    ) -> Dict[str, str]:
+        metadata: dict[str, Any]
+    ) -> dict[str, str]:
         """
         Process LLM response into output files.
 
@@ -197,7 +197,7 @@ class BasePromptablePlugin(ABC):
     # Optional overrides
     # ========================================================================
 
-    def get_response_schema(self) -> Optional[Dict[str, Any]]:
+    def get_response_schema(self) -> dict[str, Any] | None:
         """Return JSON schema for structured output (optional)."""
         return None
 
