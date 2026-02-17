@@ -13,7 +13,7 @@ Set AI_MODEL environment variable to choose which model to use:
 """
 import json
 import os
-from typing import Dict, Any, Optional
+from typing import Any
 
 try:
     import aisuite as ai
@@ -41,7 +41,7 @@ class LLMClient:
         )
     """
 
-    def __init__(self, model: Optional[str] = None):
+    def __init__(self, model: str | None = None):
         """
         Initialize LLM client with all configured providers.
 
@@ -144,12 +144,12 @@ class LLMClient:
             if "base_url" in provider_configs["openai"]:
                 print(f"   Azure OpenAI: {os.getenv('OPENAI_ENDPOINT')}")
             else:
-                print(f"   Direct OpenAI API")
+                print("   Direct OpenAI API")
         elif provider_name == "anthropic" and "anthropic" in provider_configs:
             if "base_url" in provider_configs["anthropic"]:
                 print(f"   Azure Claude: {os.getenv('ANTHROPIC_ENDPOINT')}")
             else:
-                print(f"   Direct Anthropic API")
+                print("   Direct Anthropic API")
 
     def call(self, prompt: str, max_tokens: int = 4096, temperature: float = 0.7) -> str:
         """
@@ -177,10 +177,10 @@ class LLMClient:
     def call_structured(
         self,
         prompt: str,
-        response_schema: Dict[str, Any],
+        response_schema: dict[str, Any],
         max_tokens: int = 8000,
         temperature: float = 0.7
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Call LLM with prompt and return structured JSON response.
 
@@ -203,7 +203,7 @@ class LLMClient:
         response_text = self.call(json_prompt, max_tokens, temperature)
         return self._parse_json_response(response_text)
 
-    def _parse_json_response(self, response: str) -> Dict[str, Any]:
+    def _parse_json_response(self, response: str) -> dict[str, Any]:
         """
         Parse JSON from LLM response, handling markdown code blocks.
 

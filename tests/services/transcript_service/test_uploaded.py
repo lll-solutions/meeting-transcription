@@ -10,7 +10,6 @@ Test coverage:
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
-
 from meeting_transcription.services.transcript_service import TranscriptService
 
 
@@ -58,7 +57,7 @@ class TestProcessUploadedTranscript:
     """Tests for process_uploaded_transcript method."""
 
     @patch("os.path.exists")
-    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
+    @patch("meeting_transcription.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("builtins.open", new_callable=mock_open)
     def test_process_uploaded_transcript_success(
         self,
@@ -94,7 +93,7 @@ class TestProcessUploadedTranscript:
         assert final_call[0][1]["status"] == "completed"
 
     @patch("os.path.exists")
-    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
+    @patch("meeting_transcription.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("builtins.open", new_callable=mock_open)
     def test_process_uploaded_transcript_with_title(
         self,
@@ -125,7 +124,7 @@ class TestProcessUploadedTranscript:
         assert title_calls[0][0][1]["title"] == "My Lecture"
 
     @patch("os.path.exists")
-    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
+    @patch("meeting_transcription.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("builtins.open", new_callable=mock_open)
     def test_process_uploaded_transcript_uploads_intermediate_files(
         self,
@@ -156,7 +155,7 @@ class TestProcessUploadedTranscript:
         assert combined_present, f"Expected combined file in {uploaded_files}"
         assert chunks_present, f"Expected chunks file in {uploaded_files}"
 
-    @patch("src.pipeline.combine_transcript_words.combine_transcript_words")
+    @patch("meeting_transcription.pipeline.combine_transcript_words.combine_transcript_words")
     @patch("builtins.open", new_callable=mock_open)
     def test_process_uploaded_transcript_pipeline_failure(
         self,

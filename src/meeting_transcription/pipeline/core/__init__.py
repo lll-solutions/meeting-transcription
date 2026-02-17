@@ -10,12 +10,12 @@ This module provides the foundational interfaces for pluggable components:
 - ContentType, ChunkStrategy: Type-safe enums
 """
 
-from .types import ContentType, ChunkStrategy
 from .base_chunker import BaseChunker, ChunkMetadata
-from .base_prompt_engine import BasePromptEngine, PromptContext
 from .base_formatter import BaseFormatter
+from .base_prompt_engine import BasePromptEngine, PromptContext
 from .base_promptable_plugin import BasePromptablePlugin
 from .pipeline_config import PipelineConfig
+from .types import ChunkStrategy, ContentType
 
 __all__ = [
     'ContentType',

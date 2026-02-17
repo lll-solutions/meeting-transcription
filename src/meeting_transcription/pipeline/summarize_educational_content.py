@@ -10,9 +10,8 @@ Supports multiple LLM providers:
 - anthropic: Anthropic (Claude)
 """
 import json
-import sys
 import os
-from typing import List, Dict, Any
+import sys
 
 # Import prompts - handle both direct run and module import
 try:
@@ -59,7 +58,7 @@ except ImportError:
 class EducationalSummarizer:
     """Summarize educational content using LLM."""
 
-    def __init__(self, provider: str = None, model: str = None):
+    def __init__(self, provider: str | None = None, model: str | None = None):
         """
         Initialize summarizer with LLM client.
 
@@ -74,7 +73,7 @@ class EducationalSummarizer:
 
         # Old provider-specific initialization removed - now using LLMClient
 
-    def _init_vertex_ai(self, model: str = None):
+    def _init_vertex_ai(self, model: str | None = None):
         """Initialize Google Vertex AI (Gemini)."""
         if not HAS_VERTEX_AI:
             raise ImportError(
@@ -95,7 +94,7 @@ class EducationalSummarizer:
         if project:
             print(f"   Project: {project}")
 
-    def _init_azure_openai(self, model: str = None):
+    def _init_azure_openai(self, model: str | None = None):
         """Initialize Azure OpenAI."""
         if not HAS_OPENAI:
             raise ImportError(
@@ -122,7 +121,7 @@ class EducationalSummarizer:
         print(f"✅ Using Azure OpenAI: {azure_endpoint}")
         print(f"   Deployment: {self.model}")
 
-    def _init_openai(self, model: str = None):
+    def _init_openai(self, model: str | None = None):
         """Initialize OpenAI."""
         if not HAS_OPENAI:
             raise ImportError(
@@ -138,7 +137,7 @@ class EducationalSummarizer:
 
         print(f"✅ Using OpenAI: {self.model}")
 
-    def _init_anthropic(self, model: str = None):
+    def _init_anthropic(self, model: str | None = None):
         """Initialize Anthropic Claude."""
         if not HAS_ANTHROPIC:
             raise ImportError(
@@ -223,7 +222,7 @@ class EducationalSummarizer:
             print(f"❌ OpenAI API error: {e}")
             return None
 
-    def _parse_json_response(self, response: str) -> Dict:
+    def _parse_json_response(self, response: str) -> dict:
         """
         Parse JSON from LLM response, handling markdown code blocks.
 
@@ -253,7 +252,7 @@ class EducationalSummarizer:
             print(f"⚠️ JSON parse error: {e}")
             return None
 
-    def analyze_chunk(self, chunk_data: Dict, instructor: str) -> Dict:
+    def analyze_chunk(self, chunk_data: dict, instructor: str) -> dict:
         """
         Analyze a single educational chunk.
 
@@ -292,9 +291,9 @@ class EducationalSummarizer:
 
     def create_overall_summary(
         self,
-        chunk_analyses: List[Dict],
-        metadata: Dict
-    ) -> Dict:
+        chunk_analyses: list[dict],
+        metadata: dict
+    ) -> dict:
         """
         Create overall summary from chunk analyses.
 
@@ -327,7 +326,7 @@ class EducationalSummarizer:
                 'raw_response': response[:2000]
             }
 
-    def extract_action_items(self, overall_summary: Dict) -> Dict:
+    def extract_action_items(self, overall_summary: dict) -> dict:
         """
         Extract action items from overall summary.
 
@@ -354,8 +353,8 @@ def summarize_educational_content(
     chunks_file: str,
     output_file: str,
     provider: str = 'vertex_ai',
-    model: str = None,
-    sample_chunks: int = None
+    model: str | None = None,
+    sample_chunks: int | None = None
 ):
     """
     Main function to summarize educational content.
@@ -369,7 +368,7 @@ def summarize_educational_content(
     """
     # Load chunks
     print(f"📂 Loading chunks from {chunks_file}...")
-    with open(chunks_file, 'r') as f:
+    with open(chunks_file) as f:
         data = json.load(f)
 
     metadata = data['metadata']
@@ -417,7 +416,7 @@ def summarize_educational_content(
         json.dump(final_output, f, indent=2)
 
     print(f"\n✅ Summary saved to: {output_file}")
-    print(f"\n📋 Summary Stats:")
+    print("\n📋 Summary Stats:")
     print(f"   • Chunks processed: {len(chunks)}")
     print(f"   • Instructor: {metadata.get('instructor', 'Unknown')}")
     print(f"   • Duration: {metadata.get('meeting_duration_minutes', 'N/A')} minutes")

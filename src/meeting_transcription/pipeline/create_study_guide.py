@@ -4,9 +4,7 @@ Create markdown and PDF study guide from educational summary JSON.
 """
 import json
 import sys
-import os
 from datetime import datetime
-from typing import List
 
 
 def create_markdown_study_guide(summary_file: str, output_file: str):
@@ -18,7 +16,7 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
         output_file: Path to output markdown file
     """
     # Load summary
-    with open(summary_file, 'r') as f:
+    with open(summary_file) as f:
         data = json.load(f)
 
     metadata = data.get('metadata', {})
@@ -287,7 +285,7 @@ def create_markdown_study_guide(summary_file: str, output_file: str):
     total_insights = len(unique_insights)
     total_qa = len(all_qa)
 
-    print(f"\nStudy Guide Contents:")
+    print("\nStudy Guide Contents:")
     print(f"  - {total_concepts} Key Concepts")
     print(f"  - {total_tools} Tools/Frameworks")
     print(f"  - {total_practices} Best Practices")

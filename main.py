@@ -32,17 +32,24 @@ from meeting_transcription.api.auth import (
 )
 from meeting_transcription.api.storage import MeetingStorage
 from meeting_transcription.api.timezone_utils import format_datetime_for_user, utc_now
+
+# Import Google Meet routes
+from meeting_transcription.google_meet.routes import google_meet_bp
+
+# Import plugin system
+from meeting_transcription.plugins import (
+    discover_and_register_plugins,
+    get_plugin,
+    register_builtin_plugins,
+)
+
+# Import provider system
+from meeting_transcription.providers import get_provider, list_providers
 from meeting_transcription.services.meeting_service import MeetingService
 from meeting_transcription.services.scheduled_meeting_service import ScheduledMeetingService
 from meeting_transcription.services.transcript_service import TranscriptService
 from meeting_transcription.services.webhook_service import WebhookService
 from meeting_transcription.utils.url_validator import UrlValidator
-
-# Import plugin system
-from meeting_transcription.plugins import get_plugin, discover_and_register_plugins, register_builtin_plugins
-
-# Import provider system
-from meeting_transcription.providers import get_provider, list_providers
 
 # Register built-in plugins (educational)
 register_builtin_plugins()
@@ -60,6 +67,9 @@ app = Flask(__name__, static_folder='static')
 
 # Configure for large file uploads (50MB limit)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+
+# Register Google Meet blueprint
+app.register_blueprint(google_meet_bp)
 
 # Initialize authentication
 init_auth(app)
@@ -111,7 +121,7 @@ def add_security_headers(response):
     response.headers['Content-Security-Policy'] = csp_policy
 
     # Enforce HTTPS in production
-    if not os.getenv("ENV", "").lower() == "development":
+    if os.getenv("ENV", "").lower() != "development":
         response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
 
     # Referrer policy - don't leak URLs to external sites
@@ -592,13 +602,13 @@ def setup_admin():
     Only works if no users exist yet.
     """
     # Require setup API key for security
-    SETUP_API_KEY = os.getenv("SETUP_API_KEY", "").strip()
+    setup_api_key = os.getenv("SETUP_API_KEY", "").strip()
     provided_key = request.headers.get("X-Setup-Key", "").strip()
 
-    if not SETUP_API_KEY:
+    if not setup_api_key:
         return jsonify({"error": "Setup endpoint is not configured (missing SETUP_API_KEY)"}), 500
 
-    if not provided_key or provided_key != SETUP_API_KEY:
+    if not provided_key or provided_key != setup_api_key:
         return jsonify({"error": "Unauthorized - invalid or missing setup key"}), 401
 
     data = request.json
@@ -650,7 +660,7 @@ def ui_create_meeting():
     if not FEATURES_BOT_JOINING:
         return '<div class="text-accent-coral p-4">Bot joining feature is disabled. Please use transcript upload instead.</div>', 403
 
-    meeting_url = request.form.get('meeting_url')
+    meeting_url = request.form.get('meeting_url', '')
     bot_name = request.form.get('bot_name') or get_default_bot_name()
     instructor_name = request.form.get('instructor_name')
 
@@ -821,6 +831,9 @@ def create_scheduled_meeting():
 
     if error:
         return jsonify({"error": error}), 400 if "not supported" in error or "required" in error or "Invalid" in error else 500
+
+    if created_meeting is None:
+        return jsonify({"error": "Failed to create scheduled meeting"}), 500
 
     return jsonify(created_meeting.to_dict()), 201
 
@@ -1241,7 +1254,10 @@ def upload_transcript():
 
     # Detect and parse text transcripts
     if isinstance(transcript_data, str):
-        from src.pipeline.parse_text_transcript import detect_text_transcript_format, parse_text_to_combined_format
+        from src.pipeline.parse_text_transcript import (
+            detect_text_transcript_format,
+            parse_text_to_combined_format,
+        )
 
         detection = detect_text_transcript_format(transcript_data)
 
@@ -1253,7 +1269,7 @@ def upload_transcript():
                 print(f"   Parsed {len(transcript_data)} segments")
             except Exception as e:
                 return jsonify({
-                    "error": f"Failed to parse text transcript: {str(e)}"
+                    "error": f"Failed to parse text transcript: {e!s}"
                 }), 400
         else:
             return jsonify({

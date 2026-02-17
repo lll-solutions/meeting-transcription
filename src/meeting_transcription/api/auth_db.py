@@ -9,11 +9,11 @@ Implements:
 """
 
 import os
-import time
-import jwt
-import bcrypt
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, Tuple
+from typing import Any
+
+import bcrypt
+import jwt
 
 # Try to import Firestore
 try:
@@ -50,9 +50,9 @@ class User:
         self,
         email: str,
         name: str,
-        password_hash: str = None,
-        id: str = None,
-        created_at: str = None,
+        password_hash: str | None = None,
+        id: str | None = None,
+        created_at: str | None = None,
         provider: str = "db",
         timezone: str = "America/New_York"
     ):
@@ -64,7 +64,7 @@ class User:
         self.provider = provider
         self.timezone = timezone
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses (excludes sensitive data)."""
         return {
             "id": self.id,
@@ -73,8 +73,8 @@ class User:
             "provider": self.provider,
             "timezone": self.timezone
         }
-    
-    def to_firestore(self) -> Dict[str, Any]:
+
+    def to_firestore(self) -> dict[str, Any]:
         """Convert to dictionary for Firestore storage."""
         return {
             "email": self.email,
@@ -84,14 +84,14 @@ class User:
             "provider": self.provider,
             "timezone": self.timezone
         }
-    
+
     def __str__(self):
         return self.email
 
 
 class AuthService:
     """Authentication service using Firestore."""
-    
+
     def __init__(self):
         self.db = None
         if HAS_FIRESTORE and os.getenv("GOOGLE_CLOUD_PROJECT"):
@@ -100,64 +100,64 @@ class AuthService:
                 print("✅ AuthService connected to Firestore")
             except Exception as e:
                 print(f"⚠️ AuthService could not connect to Firestore: {e}")
-    
-    def create_user(self, email: str, password: str, name: str) -> Tuple[Optional[User], str]:
+
+    def create_user(self, email: str, password: str, name: str) -> tuple[User | None, str]:
         """
         Create a new user.
-        
+
         Returns:
             (User, error_message)
         """
         if not self.db:
             return None, "Database not available"
-        
+
         email = email.lower().strip()
-        
+
         # Check if user exists
         doc_ref = self.db.collection("users").document(email)
         if doc_ref.get().exists:
             return None, "User already exists"
-        
+
         # Hash password
         salt = bcrypt.gensalt()
         password_hash = bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
-        
+
         # Create user object
         user = User(
             email=email,
             name=name,
             password_hash=password_hash
         )
-        
+
         # Save to Firestore
         try:
             doc_ref.set(user.to_firestore())
             return user, ""
         except Exception as e:
-            return None, f"Failed to create user: {str(e)}"
+            return None, f"Failed to create user: {e!s}"
 
-    def authenticate_user(self, email: str, password: str) -> Optional[User]:
+    def authenticate_user(self, email: str, password: str) -> User | None:
         """
         Authenticate a user by email and password.
         """
         if not self.db:
             return None
-        
+
         email = email.lower().strip()
-        
+
         # Get user
         doc_ref = self.db.collection("users").document(email)
         doc = doc_ref.get()
-        
+
         if not doc.exists:
             return None
-        
+
         data = doc.to_dict()
         stored_hash = data.get("password_hash")
-        
+
         if not stored_hash:
             return None
-            
+
         # Verify password
         if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
             return User(
@@ -171,7 +171,7 @@ class AuthService:
 
         return None
 
-    def get_user(self, email: str) -> Optional[User]:
+    def get_user(self, email: str) -> User | None:
         """
         Get user by email.
         """
@@ -197,7 +197,7 @@ class AuthService:
             provider=data.get("provider", "db")
         )
 
-    def update_user(self, email: str, updates: Dict[str, Any]) -> Tuple[Optional[User], str]:
+    def update_user(self, email: str, updates: dict[str, Any]) -> tuple[User | None, str]:
         """
         Update user fields.
 
@@ -229,7 +229,7 @@ class AuthService:
             doc_ref.update(filtered_updates)
             return self.get_user(email), ""
         except Exception as e:
-            return None, f"Failed to update user: {str(e)}"
+            return None, f"Failed to update user: {e!s}"
 
     def create_token(self, user: User) -> str:
         """Generate a JWT token for the user."""
@@ -240,14 +240,14 @@ class AuthService:
             "iat": datetime.utcnow(),
             "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
         }
-        
+
         return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-    def verify_token(self, token: str) -> Optional[User]:
+    def verify_token(self, token: str) -> User | None:
         """Verify a JWT token."""
         try:
             payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-            
+
             return User(
                 id=payload.get("sub"),
                 email=payload.get("email"),

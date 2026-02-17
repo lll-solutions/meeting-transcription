@@ -5,8 +5,7 @@ Designed for AI/tech class recordings with instructor and students.
 """
 import json
 import sys
-from typing import List, Dict, Any
-from datetime import datetime
+
 
 def format_timestamp(seconds: float) -> str:
     """Convert seconds to MM:SS format."""
@@ -14,7 +13,7 @@ def format_timestamp(seconds: float) -> str:
     secs = int(seconds % 60)
     return f"{minutes:02d}:{secs:02d}"
 
-def identify_instructor(transcript: List[Dict]) -> str:
+def identify_instructor(transcript: list[dict]) -> str:
     """
     Identify the instructor (person who speaks the most).
 
@@ -35,10 +34,10 @@ def identify_instructor(transcript: List[Dict]) -> str:
     return instructor
 
 def create_educational_chunks(
-    transcript: List[Dict],
+    transcript: list[dict],
     instructor: str,
     chunk_minutes: int = 10
-) -> List[Dict]:
+) -> list[dict]:
     """
     Create time-based chunks with educational context.
 
@@ -90,7 +89,7 @@ def create_educational_chunks(
         if chunk_segments:
             # Calculate statistics
             total_words = sum(seg['word_count'] for seg in chunk_segments)
-            speakers = list(set(seg['speaker'] for seg in chunk_segments))
+            speakers = list({seg['speaker'] for seg in chunk_segments})
             student_speakers = [s for s in speakers if s != instructor]
 
             # Count instructor vs student words
@@ -122,7 +121,7 @@ def create_educational_chunks(
 
     return chunks
 
-def format_chunk_for_llm(chunk: Dict, instructor: str) -> str:
+def format_chunk_for_llm(chunk: dict, instructor: str) -> str:
     """
     Format a chunk as a readable transcript for LLM processing.
 
@@ -164,7 +163,7 @@ def create_educational_content_chunks(
         chunk_minutes: Minutes per chunk (default 10)
     """
     # Read combined transcript
-    with open(input_file, 'r') as f:
+    with open(input_file) as f:
         transcript = json.load(f)
 
     if not transcript:
@@ -218,14 +217,14 @@ def create_educational_content_chunks(
         json.dump(output, f, indent=2)
 
     # Print summary
-    print(f"\n=== Educational Chunks Created ===")
+    print("\n=== Educational Chunks Created ===")
     print(f"Meeting duration: {int(total_duration)} minutes")
     print(f"Total chunks: {len(chunks)} ({chunk_minutes}-minute chunks)")
     print(f"Total words: {output['metadata']['total_words']:,}")
     print(f"Instructor: {instructor}")
     print(f"Students: {len(participants) - 1}")
-    print(f"\nChunk breakdown:")
-    for i, chunk in enumerate(chunks[:5]):
+    print("\nChunk breakdown:")
+    for _i, chunk in enumerate(chunks[:5]):
         interaction = "✓" if chunk['has_student_interaction'] else "✗"
         print(f"  Chunk {chunk['chunk_number']}: {chunk['time_range']} - "
               f"{chunk['total_words']} words - "

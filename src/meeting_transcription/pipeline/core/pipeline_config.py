@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
+from typing import Any
 
 from .types import ContentType
 
@@ -22,11 +22,11 @@ class PipelineConfig:
     formatter_class: type  # Class implementing BaseFormatter
 
     # Chunker-specific parameters
-    chunker_params: Dict[str, Any] = field(default_factory=dict)
+    chunker_params: dict[str, Any] = field(default_factory=dict)
 
     # LLM parameters
     llm_provider: str = 'vertex_ai'  # 'vertex_ai', 'azure', 'openai', 'anthropic'
-    llm_model: Optional[str] = None
+    llm_model: str | None = None
 
     # Context injection (for therapy)
     requires_previous_session: bool = False

@@ -5,11 +5,10 @@ Automatically discovers and registers plugins from the plugins/ directory.
 This allows plugins to be installed by simply copying files - no code changes needed.
 """
 
+import importlib.util
 import os
 import sys
-import importlib.util
 from pathlib import Path
-from typing import List, Optional
 
 from .plugin_registry import register_plugin
 
@@ -32,7 +31,7 @@ def _is_plugin_disabled(plugin_name: str) -> bool:
     return plugin_name.lower() in disabled_list
 
 
-def discover_and_register_plugins(plugins_base_dir: Optional[str] = None) -> List[str]:
+def discover_and_register_plugins(plugins_base_dir: str | None = None) -> list[str]:
     """
     Auto-discover and register plugins from plugins/ directory.
 

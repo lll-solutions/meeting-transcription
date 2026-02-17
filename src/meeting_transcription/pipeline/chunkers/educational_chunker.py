@@ -5,15 +5,15 @@ This chunker wraps the existing create_educational_chunks implementation,
 maintaining 100% backward compatibility while conforming to the BaseChunker interface.
 """
 
-from typing import List, Dict, Any
-import sys
 import os
+import sys
+from typing import Any
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from pipeline.core import BaseChunker, ChunkMetadata, ContentType, ChunkStrategy
 from pipeline import create_educational_chunks
+from pipeline.core import BaseChunker, ChunkMetadata, ChunkStrategy, ContentType
 
 
 class EducationalTimeBasedChunker(BaseChunker):
@@ -38,9 +38,9 @@ class EducationalTimeBasedChunker(BaseChunker):
 
     def chunk_transcript(
         self,
-        combined_transcript: List[Dict],
+        combined_transcript: list[dict],
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Create time-based chunks using existing educational chunking logic.
 

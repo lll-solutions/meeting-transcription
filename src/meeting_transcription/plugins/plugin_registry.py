@@ -4,7 +4,6 @@ Plugin registry for managing transcript processing plugins.
 Handles plugin registration, discovery, and retrieval.
 """
 
-from typing import Dict, List, Optional
 from .transcript_plugin_protocol import TranscriptPlugin
 
 
@@ -13,7 +12,7 @@ class PluginRegistry:
 
     def __init__(self):
         """Initialize empty plugin registry."""
-        self._plugins: Dict[str, TranscriptPlugin] = {}
+        self._plugins: dict[str, TranscriptPlugin] = {}
 
     def register(self, plugin: TranscriptPlugin) -> None:
         """
@@ -56,7 +55,7 @@ class PluginRegistry:
 
         return self._plugins[name]
 
-    def list(self) -> List[Dict[str, str]]:
+    def list(self) -> list[dict[str, str]]:
         """
         List all registered plugins.
 
@@ -123,7 +122,7 @@ def get_plugin(name: str) -> TranscriptPlugin:
     return _registry.get(name)
 
 
-def list_plugins() -> List[Dict[str, str]]:
+def list_plugins() -> list[dict[str, str]]:
     """List all plugins in the global registry."""
     return _registry.list()
 

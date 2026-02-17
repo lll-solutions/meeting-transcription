@@ -5,6 +5,7 @@ Combine individual words in transcript into full text segments.
 import json
 import sys
 
+
 def combine_transcript_words(input_file, output_file):
     """
     Transform transcript from word-level to conversation-level.
@@ -18,7 +19,7 @@ def combine_transcript_words(input_file, output_file):
         output_file: Path to output JSON file with combined text
     """
     # Read the transcript
-    with open(input_file, 'r') as f:
+    with open(input_file) as f:
         transcript = json.load(f)
 
     if not transcript or len(transcript) == 0:

@@ -11,14 +11,13 @@ Generates comprehensive study guides with:
 """
 
 import os
-import json
-from typing import Dict, Any
+from typing import Any
 
 from meeting_transcription.pipeline import (
     create_educational_chunks,
-    summarize_educational_content,
     create_study_guide,
-    markdown_to_pdf
+    markdown_to_pdf,
+    summarize_educational_content,
 )
 
 
@@ -53,7 +52,7 @@ class EducationalPlugin:
         )
 
     @property
-    def metadata_schema(self) -> Dict[str, Any]:
+    def metadata_schema(self) -> dict[str, Any]:
         """Define metadata fields needed for educational sessions."""
         return {
             "instructor_name": {
@@ -80,7 +79,7 @@ class EducationalPlugin:
         }
 
     @property
-    def settings_schema(self) -> Dict[str, Any]:
+    def settings_schema(self) -> dict[str, Any]:
         """Define user-configurable settings."""
         return {
             "chunk_duration_minutes": {
@@ -124,7 +123,7 @@ class EducationalPlugin:
             }
         }
 
-    def configure(self, settings: Dict[str, Any]) -> None:
+    def configure(self, settings: dict[str, Any]) -> None:
         """
         Apply settings to plugin instance.
 
@@ -148,7 +147,7 @@ class EducationalPlugin:
             self.generate_pdf
         )
 
-        print(f"📚 Educational plugin configured:")
+        print("📚 Educational plugin configured:")
         print(f"   - Chunk duration: {self.chunk_duration_minutes} minutes")
         print(f"   - Summarization depth: {self.summarization_depth}")
         print(f"   - Generate PDF: {self.generate_pdf}")
@@ -158,8 +157,8 @@ class EducationalPlugin:
         combined_transcript_path: str,
         output_dir: str,
         llm_provider: str,
-        metadata: Dict[str, Any]
-    ) -> Dict[str, str]:
+        metadata: dict[str, Any]
+    ) -> dict[str, str]:
         """
         Process educational transcript through multi-stage pipeline.
 

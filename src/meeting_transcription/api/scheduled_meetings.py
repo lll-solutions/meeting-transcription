@@ -4,10 +4,12 @@ Scheduled meetings storage and management.
 Handles scheduling bots to join meetings at a specific time.
 """
 
+from __future__ import annotations
+
 import os
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any
 from zoneinfo import ZoneInfo
 
 try:
@@ -27,12 +29,12 @@ class ScheduledMeeting:
         user: str,
         bot_name: str = "Meeting Assistant",
         user_timezone: str = "America/New_York",
-        instructor_name: str = None,
-        id: str = None,
+        instructor_name: str | None = None,
+        id: str | None = None,
         status: str = "scheduled",
-        created_at: datetime = None,
-        actual_meeting_id: str = None,
-        error: str = None
+        created_at: datetime | None = None,
+        actual_meeting_id: str | None = None,
+        error: str | None = None
     ):
         self.id = id or str(uuid.uuid4())
         self.user = user
@@ -46,7 +48,7 @@ class ScheduledMeeting:
         self.actual_meeting_id = actual_meeting_id
         self.error = error
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
             "id": self.id,
@@ -62,7 +64,7 @@ class ScheduledMeeting:
             "error": self.error
         }
 
-    def to_firestore(self) -> Dict[str, Any]:
+    def to_firestore(self) -> dict[str, Any]:
         """Convert to dictionary for Firestore storage."""
         return {
             "user": self.user,
@@ -78,7 +80,7 @@ class ScheduledMeeting:
         }
 
     @staticmethod
-    def from_firestore(doc_id: str, data: Dict[str, Any]) -> 'ScheduledMeeting':
+    def from_firestore(doc_id: str, data: dict[str, Any]) -> ScheduledMeeting:
         """Create from Firestore document."""
         scheduled_time = data.get("scheduled_time")
         if isinstance(scheduled_time, str):
@@ -115,7 +117,7 @@ class ScheduledMeetingStorage:
             except Exception as e:
                 print(f"⚠️ ScheduledMeetingStorage could not connect to Firestore: {e}")
 
-    def create(self, meeting: ScheduledMeeting) -> Tuple[Optional[ScheduledMeeting], str]:
+    def create(self, meeting: ScheduledMeeting) -> tuple[ScheduledMeeting | None, str]:
         """
         Create a scheduled meeting.
 
@@ -130,9 +132,9 @@ class ScheduledMeetingStorage:
             doc_ref.set(meeting.to_firestore())
             return meeting, ""
         except Exception as e:
-            return None, f"Failed to create scheduled meeting: {str(e)}"
+            return None, f"Failed to create scheduled meeting: {e!s}"
 
-    def get(self, meeting_id: str) -> Optional[ScheduledMeeting]:
+    def get(self, meeting_id: str) -> ScheduledMeeting | None:
         """Get a scheduled meeting by ID."""
         if not self.db:
             return None
@@ -149,7 +151,7 @@ class ScheduledMeetingStorage:
             print(f"Error getting scheduled meeting: {e}")
             return None
 
-    def list(self, user: str = None, status: str = None) -> List[ScheduledMeeting]:
+    def list(self, user: str | None = None, status: str | None = None) -> list[ScheduledMeeting]:
         """
         List scheduled meetings.
 
@@ -180,7 +182,7 @@ class ScheduledMeetingStorage:
             print(f"Error listing scheduled meetings: {e}")
             return []
 
-    def get_pending(self, before_time: datetime = None) -> List[ScheduledMeeting]:
+    def get_pending(self, before_time: datetime | None = None) -> list[ScheduledMeeting]:
         """
         Get scheduled meetings that are ready to be executed.
 
@@ -208,7 +210,7 @@ class ScheduledMeetingStorage:
             print(f"Error getting pending scheduled meetings: {e}")
             return []
 
-    def update(self, meeting_id: str, updates: Dict[str, Any]) -> Tuple[Optional[ScheduledMeeting], str]:
+    def update(self, meeting_id: str, updates: dict[str, Any]) -> tuple[ScheduledMeeting | None, str]:
         """
         Update a scheduled meeting.
 
@@ -232,9 +234,9 @@ class ScheduledMeetingStorage:
             doc_ref.update(updates)
             return self.get(meeting_id), ""
         except Exception as e:
-            return None, f"Failed to update scheduled meeting: {str(e)}"
+            return None, f"Failed to update scheduled meeting: {e!s}"
 
-    def delete(self, meeting_id: str) -> Tuple[bool, str]:
+    def delete(self, meeting_id: str) -> tuple[bool, str]:
         """
         Delete (cancel) a scheduled meeting.
 
@@ -254,7 +256,7 @@ class ScheduledMeetingStorage:
             doc_ref.delete()
             return True, ""
         except Exception as e:
-            return False, f"Failed to delete scheduled meeting: {str(e)}"
+            return False, f"Failed to delete scheduled meeting: {e!s}"
 
 
 # Global instance

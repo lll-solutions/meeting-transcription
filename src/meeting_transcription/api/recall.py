@@ -3,8 +3,9 @@ Recall.ai API wrapper module
 Handles bot creation, management, and transcript retrieval.
 """
 
-import requests
 import os
+
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,19 +18,19 @@ BASE_URL = os.getenv("RECALL_API_BASE_URL", "https://us-west-2.recall.ai/api/v1"
 def create_bot(meeting_url: str, webhook_url: str, bot_name: str = "Meeting Assistant Bot") -> dict | None:
     """
     Create a bot to join a meeting and record/transcribe.
-    
+
     Args:
         meeting_url: The Zoom/Teams/Meet meeting URL
         webhook_url: The webhook endpoint to receive events
         bot_name: Display name for the bot in the meeting
-    
+
     Returns:
         dict: Bot data including bot ID, or None if creation failed
     """
     if not RECALL_API_KEY:
         print("❌ RECALL_API_KEY not configured")
         return None
-        
+
     headers = {
         "Authorization": f"Token {RECALL_API_KEY}",
         "Content-Type": "application/json",
@@ -65,10 +66,10 @@ def create_bot(meeting_url: str, webhook_url: str, bot_name: str = "Meeting Assi
 def create_async_transcript(recording_id: str) -> dict | None:
     """
     Generate a high-quality async transcript using AssemblyAI.
-    
+
     Args:
         recording_id: The recording's UUID
-    
+
     Returns:
         dict: Transcript data including transcript ID, or None if creation failed
     """
@@ -112,10 +113,10 @@ def create_async_transcript(recording_id: str) -> dict | None:
 def get_transcript(transcript_id: str) -> dict | None:
     """
     Retrieve the completed async transcript.
-    
+
     Args:
         transcript_id: The transcript's UUID
-    
+
     Returns:
         dict: Transcript data, or None if retrieval failed
     """
@@ -139,11 +140,11 @@ def get_transcript(transcript_id: str) -> dict | None:
 def download_transcript(transcript_id: str, output_file: str = "transcript.json") -> str | None:
     """
     Download the transcript JSON file.
-    
+
     Args:
         transcript_id: The transcript's UUID
         output_file: Path where transcript should be saved
-    
+
     Returns:
         str: Path to downloaded file, or None if failed
     """
@@ -166,10 +167,10 @@ def download_transcript(transcript_id: str, output_file: str = "transcript.json"
 def get_bot_status(bot_id: str) -> dict | None:
     """
     Check the current status of a bot.
-    
+
     Args:
         bot_id: The bot's UUID
-    
+
     Returns:
         dict: Bot status data, or None if retrieval failed
     """
@@ -190,7 +191,7 @@ def get_bot_status(bot_id: str) -> dict | None:
 def list_bots() -> list | None:
     """
     List all bots.
-    
+
     Returns:
         list: List of bot data, or None if retrieval failed
     """
@@ -211,10 +212,10 @@ def list_bots() -> list | None:
 def leave_meeting(bot_id: str) -> bool:
     """
     Make a bot leave the meeting it's currently in.
-    
+
     Args:
         bot_id: The bot's UUID
-    
+
     Returns:
         bool: True if leave command succeeded, False otherwise
     """
