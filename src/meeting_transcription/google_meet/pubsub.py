@@ -5,9 +5,12 @@ Creates and configures the Pub/Sub topic and push subscription
 that receives Meet transcript notifications.
 """
 
+import logging
 import os
 
 from .config import get_google_oauth_config
+
+logger = logging.getLogger(__name__)
 
 try:
     from google.api_core.exceptions import AlreadyExists, NotFound
@@ -102,14 +105,14 @@ def delete_pubsub_resources() -> None:
         )
         print(f"Deleted subscription: {config.pubsub_subscription_path}")
     except NotFound:
-        pass
+        logger.debug("Subscription %s not found, nothing to delete", config.pubsub_subscription_path)
 
     publisher = pubsub_v1.PublisherClient()
     try:
         publisher.delete_topic(request={"topic": config.pubsub_topic_path})
         print(f"Deleted topic: {config.pubsub_topic_path}")
     except NotFound:
-        pass
+        logger.debug("Topic %s not found, nothing to delete", config.pubsub_topic_path)
 
 
 def get_pubsub_status() -> dict[str, bool | str]:

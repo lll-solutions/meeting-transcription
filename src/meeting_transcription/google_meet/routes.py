@@ -10,7 +10,9 @@ Provides:
 - /webhook/google-meet - Pub/Sub push endpoint
 """
 
+import logging
 import os
+from urllib.parse import quote
 
 from flask import Blueprint, g, jsonify, redirect, render_template, request
 
@@ -19,6 +21,8 @@ from .oauth import GoogleOAuthFlow, delete_google_tokens, get_google_tokens, is_
 from .session_handler import MeetSessionHandler
 from .webhook_handler import MeetWebhookHandler
 from .workspace_events import WorkspaceEventsManager
+
+logger = logging.getLogger(__name__)
 
 google_meet_bp = Blueprint("google_meet", __name__)
 
@@ -52,7 +56,7 @@ def google_callback():
     error = request.args.get("error")
 
     if error:
-        return redirect(f"/settings?error={error}")
+        return redirect(f"/settings?error={quote(str(error))}")
 
     if not code or not state:
         return redirect("/settings?error=missing_params")
@@ -72,7 +76,7 @@ def google_callback():
 
         return redirect("/settings?connected=true")
     except ValueError as e:
-        return redirect(f"/settings?error={e}")
+        return redirect(f"/settings?error={quote(str(e))}")
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +154,7 @@ def google_subscribe():
         manager.create_subscription(user_id)
         return redirect("/settings?subscribed=true")
     except ValueError as e:
-        return redirect(f"/settings?error={e}")
+        return redirect(f"/settings?error={quote(str(e))}")
 
 
 # ---------------------------------------------------------------------------
@@ -196,8 +200,8 @@ def google_meet_webhook():
         result = handler.handle_push_message(data)
         return jsonify(result), 200
     except ValueError as e:
-        print(f"Webhook error: {e}")
-        return jsonify({"error": str(e)}), 400
+        logger.error("Webhook error: %s", e)
+        return jsonify({"error": "Invalid webhook payload"}), 400
 
 
 # ---------------------------------------------------------------------------

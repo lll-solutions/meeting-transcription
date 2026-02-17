@@ -7,10 +7,13 @@ becomes available, validates them, and triggers transcript fetching.
 
 import base64
 import json
+import logging
 from collections.abc import Callable
 from typing import Any
 
 from .config import get_google_oauth_config
+
+logger = logging.getLogger(__name__)
 
 
 class MeetWebhookHandler:
@@ -164,6 +167,6 @@ class MeetWebhookHandler:
                 for doc in docs:
                     return doc.id  # Document ID is the user_id
         except ImportError:
-            pass
+            logger.debug("google-cloud-firestore not available, cannot resolve user from subscription", exc_info=True)
 
         return None

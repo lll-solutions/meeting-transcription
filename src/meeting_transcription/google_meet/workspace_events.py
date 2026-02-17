@@ -8,6 +8,7 @@ Uses the Workspace Events API v1:
 https://developers.google.com/workspace/events
 """
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,6 +16,8 @@ import requests
 
 from .config import get_google_oauth_config
 from .oauth import GoogleOAuthFlow
+
+logger = logging.getLogger(__name__)
 
 # Workspace Events API base URL
 WORKSPACE_EVENTS_API = "https://workspaceevents.googleapis.com/v1"
@@ -208,7 +211,7 @@ class WorkspaceEventsManager:
                 if expires < datetime.now(UTC):
                     return False
             except (ValueError, TypeError):
-                pass
+                logger.debug("Failed to parse subscription expireTime: %s", expire_time, exc_info=True)
 
         return True
 
@@ -238,7 +241,7 @@ def _store_subscription(user_id: str, subscription: dict[str, Any]) -> None:
             )
             return
     except ImportError:
-        pass
+        logger.debug("google-cloud-firestore not installed, using in-memory storage for store", exc_info=True)
 
     _in_memory_subs[user_id] = subscription
 
@@ -259,7 +262,7 @@ def _get_stored_subscription(user_id: str) -> dict[str, Any] | None:
             )
             return doc.to_dict() if doc.exists else None
     except ImportError:
-        pass
+        logger.debug("google-cloud-firestore not installed, using in-memory storage for get", exc_info=True)
 
     return _in_memory_subs.get(user_id)
 
@@ -276,6 +279,6 @@ def _delete_stored_subscription(user_id: str) -> None:
             db.collection("google_meet_subscriptions").document(user_id).delete()
             return
     except ImportError:
-        pass
+        logger.debug("google-cloud-firestore not installed, using in-memory storage for delete", exc_info=True)
 
     _in_memory_subs.pop(user_id, None)
