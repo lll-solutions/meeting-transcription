@@ -42,7 +42,7 @@ gunicorn = "^22.0.0"                 # Production WSGI server
 bcrypt = "^5.0.0"
 
 # Security
-flask-limiter = "^3.5.0"            # Rate limiting
+flask-limiter = "^4.1.1"            # Rate limiting
 redis = "^5.0.0"                     # Redis client for distributed rate limiting (optional)
 
 [tool.poetry.group.dev.dependencies]
