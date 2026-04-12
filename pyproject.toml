@@ -28,7 +28,7 @@ weasyprint = "^68.0"                 # HTML/CSS to PDF
 markdown = "^3.5.0"                  # Markdown processing
 
 # Google Cloud (for GCP deployment)
-google-cloud-storage = "^2.14.0"
+google-cloud-storage = "^3.9.0"
 google-cloud-firestore = "^2.14.0"
 google-cloud-secret-manager = "^2.18.0"
 google-cloud-tasks = "^2.14.0"
